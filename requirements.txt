@@ -1,0 +1,9 @@
+numpy==1.26.4
+gymnasium==0.29.1
+pyboy==2.0.3
+matplotlib==3.8.4
+opencv-python-headless==4.9.0.80
+typing-extensions>=4.8.0
+# Install torch separately per platform:
+#   Mac/MPS or CPU:    pip install torch==2.2.2
+#   GPU (CUDA 12.x):   pip install --index-url https://download.pytorch.org/whl/cu121 torch==2.2.2

@@ -1,0 +1,32 @@
+{
+  "project_name": "PokemonRedExperiments-adapted",
+  "entrypoint": "epsilon/pokemon_rl/minimal_epsilon_setup.py",
+  "config_path": "epsilon/pokemon_rl/training_config.json",
+  "training": 1,
+  "run_args": {
+    "episodes": 5,
+    "max_steps": 100000,
+    "learning_starts": 1000,
+    "train_frequency": 4,
+    "batch_size": 32,
+    "num_envs": 1,
+    "headless": true,
+    "no_render_map": true,
+    "no_gameplay_grid": true,
+    "display_envs": 0,
+    "no_pyboy_window": true,
+    "device": "cuda",
+    "log_interval": 10000,
+    "progress_interval": 1,
+    "perf_logging_enabled": true
+  },
+  "save_dir": "checkpoints/cluster_run",
+  "collaboration": {
+    "enabled": true,
+    "shared_dir": "/project/scratch01/compiling/a.a.baggio/PokemonRedExperiments/shared_weights",
+    "user_id": "jack",
+    "sync_interval_steps": 5000,
+    "gossip_alpha": 0.5,
+    "max_keep": 6
+  }
+}

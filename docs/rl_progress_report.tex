@@ -1,0 +1,193 @@
+\documentclass[12pt]{article}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{siunitx}
+
+\title{Bayesian Monitoring of Parcel Progress in Reinforcement Learning Agents}
+\author{Jack Belmont \and Andrew Baggio}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This report documents the latest training cycles for the Pokemon Red reinforcement learning agent, focusing on parcel-related milestones and Bayesian posterior tracking. The goal is to provide an auditable account of training configurations, outcomes, and diagnostic signals that can be presented to an RL audience.
+\end{abstract}
+
+\section{Overview}
+\begin{itemize}
+  \item Environment: Pokemon Red (PyBoy-based).
+  \item Objective: Deliver Oak's Parcel, progress toward Boulder Badge, maintain exploration coverage.
+  \item Monitoring: Episode-level Bayesian posteriors for story flags, badges, and derived milestones.
+\end{itemize}
+
+\section{Proposal Context}
+\subsection{Motivation}
+The original proposal targeted a fully reproducible Pokemon Red agent that favors long-horizon quests (badges, Elite Four, champion) over short-term farming. Achieving that requires deterministic PyBoy boots, aggressive ROM hygiene (purging every \texttt{.sav} or archive), and 8 synchronized environments so curriculum restarts never inherit stale badge bits. The broader research question is whether a dueling distributional DQN with structured rewards can unlock parcel/badge progress on consumer hardware (M1 Max) without human demonstrations.
+
+\subsection{Data Plan}
+Every long run emits per-episode summaries (\texttt{logs/train\_summary\_*.csv}), full progress manifests (\texttt{checkpoints/progress\_metrics.json}), and replayable curriculum states. Those artifacts feed the offline analysis stack under \texttt{analysis/}, which normalizes JSON into \texttt{artifacts/runs/<run\_id>/progress\_metrics.json}, regenerates posterior plots, and now tracks reward success frequencies (Section~\ref{sec:reward-success}). Maintaining that lineage ensures the Bayesian story can be audited after each new run.
+
+\subsection{Bayesian Approach}
+Each milestone is modeled as a Bernoulli trial with a Beta prior $(\alpha_0=1,\beta_0=1)$. A trial succeeds when the event fires before its configured step budget (Table~\ref{tab:posterior-table}); otherwise the posterior is updated with a failure. The same framework also drives adaptive exploration: we can route posterior means into runtime knobs such as RND scale (Section~\ref{subsec:posterior-rnd}) so that intrinsic bonuses shrink once parcel progress looks reliable.
+
+\section{Training Configuration}
+\subsection{Command Line}
+\begin{verbatim}
+caffeinate -dimsu bash -lc \
+  'cd /Users/jbelmont/Downloads/College/MS/DRL/Final && \
+   SAVE_DIR=checkpoints/headless_8env_parcel && \
+   mkdir -p "$SAVE_DIR" logs checkpoints/curriculum_states && \
+   PYTHONUNBUFFERED=1 .venv/bin/python -u \\
+     epsilon/pokemon_rl/minimal_epsilon_setup.py \\
+     --config epsilon/pokemon_rl/training_config.json \\
+     --episodes 50 --max-steps 12000 --learning-starts 3000 \\
+     --train-frequency 16 --batch-size 128 --buffer-size 4000000 \\
+     --save-dir "$SAVE_DIR" --num-envs 8 --n-step 256 \\
+     --gru-hidden-size 512 --lstm-hidden-size 512 \\
+     --headless --render-map --no-show-env-maps --no-gameplay-grid \\
+     --display-envs 0 --no-pyboy-window --device mps \\
+     --log-interval 1000 --progress-interval 5 --perf-logging-enabled \\
+     --summary-log-path logs/train_summary_8env.csv \\
+     --curriculum-events-log-path logs/curriculum_events_8env.csv \\
+     --visit-count-enabled --visit-count-scale 0.4 \\
+     --rnd-enabled --rnd-scale 0.6 --episodic-bonus-scale 0.2 \\
+     --state-archive-enabled --state-archive-reset-prob 0.25 \\
+     --auto-curriculum-capture --auto-curriculum-capture-episodes 2 \\
+     --auto-curriculum-story-flags \\
+         oak_parcel_assigned,oak_parcel_received, \\
+         oak_pokeballs_received,oak_pokedex_received,boulder_badge_flag \\
+     --reward-metrics-path "$SAVE_DIR/reward_metrics.json"'
+\end{verbatim}
+
+\subsection{Curriculum Enhancements}
+\begin{itemize}
+  \item Added archived savestates for \texttt{parcel	extunderscore assigned} and \texttt{parcel	extunderscore delivered}.
+  \item Auto-curriculum capture gated by map regions (Viridian, Routes 2/3, Pewter).
+  \item Per-event capture limits and automatic pruning to prevent Pallet-state spam.
+  \item Episode restarts sample from both curated curriculum states and \texttt{archive:fresh\_boot} fallbacks; the mix explaining why some environments log \texttt{parcel\_prep} while others show \texttt{archive:event\_battle\_win} is governed by \texttt{--state-archive-enabled} and \texttt{--auto-curriculum-capture}.
+\end{itemize}
+
+\subsection{Posterior-driven RND scaling}
+\label{subsec:posterior-rnd}
+The latest config exposes \texttt{posterior\_rnd\_enabled}, \texttt{posterior\_rnd\_event} (\emph{Oak Parcel Assigned} for these runs), and \texttt{posterior\_rnd\_bounds} so intrinsic novelty bonuses shrink as soon as the parcel posterior climbs. When enabled, \texttt{minimal\_epsilon\_setup.py} reads the per-episode posteriors emitted to \texttt{checkpoints/progress\_metrics.json}, maps the chosen event's mean into the configured bounds, and feeds that dynamic scale back into the RND reward head for the next episode.
+
+\section{Bayesian Tracking}
+\subsection{Milestone Definitions}
+The monitor currently tracks the badge ladder plus ancillary parcel/exploration events. For clarity:
+\begin{description}
+  \item[Boulder Badge] Signals that Brock was defeated in Pewter Gym (first major milestone after parcel quest). Step limit: \num{600000} frames.
+  \item[Cascade Badge] Confirms Misty was defeated in Cerulean City; reaching this means the agent navigated Nugget Bridge and Mt.~Moon.
+  \item[Thunder/Rainbow/Soul/Marsh/Volcano/Earth/Champion] Each badge corresponds to its respective gym; the Champion flag triggers only after the Elite Four plus Rival in Indigo Plateau.
+  \item[Parcel Flags] \texttt{oak\_parcel\_assigned} and \texttt{oak\_parcel\_received} fire when the Viridian mart quest is accepted and delivered; these remain at prior in the archived run.
+  \item[New Town Visited] Counts unique town/city entrances to verify map coverage.
+\end{description}
+Each milestone starts with a Beta prior $(\alpha_0 = 1, \beta_0 = 1)$ and consumes a Bernoulli trial per episode: success if the milestone clears within its step budget, failure otherwise.
+
+\subsection{Visualization}
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.9\linewidth]{../figures/badge_posteriors.pdf}
+  \caption{Posterior mean for each badge milestone (run \texttt{archive\_20251117}). All badge flags remain at the Beta prior because no badges were cleared during the 96k-step episode.}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.9\linewidth]{../figures/posterior_timeseries.pdf}
+  \caption{Episode-level posterior traces from the most recent training log. Each line shows how the Beta posterior mean evolved over the first few episodes (note: parcel and town milestones stayed at the prior because they never fired).}
+\end{figure}
+
+\subsection{Reward-Success Diagnostics}
+\label{sec:reward-success}
+Parsing the new log captured in \texttt{logs/local\_train\_20251130\_020154.log} produces \texttt{artifacts/reward\_success\_timeseries.csv}, which tracks the posterior mean for each reward threshold at step 192k and 384k. The corresponding plot aggregates those series:
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.9\linewidth]{../figures/reward_success_timeseries.pdf}
+  \caption{Posterior means and 95\% intervals for the reward-success thresholds highlighted in the log snippet (steps 192k and 384k). Episode-return and frontier-push stay saturated (32/32 successes) while parcel/story/RND rewards remain near zero because no parcel quest events fired.}
+\end{figure}
+
+\subsection{Posterior Table}
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Milestone & Step Limit & Succ./Trials & Mean & 95\% CI & Decision \\ \midrule
+    Boulder Badge & 600{,}000 & 0/0 & 0.500 & [0.025, 0.975] & defer \\
+    Cascade Badge & 800{,}000 & 0/0 & 0.500 & [0.026, 0.974] & defer \\
+    Thunder Badge & 950{,}000 & 0/0 & 0.500 & [0.024, 0.976] & pursue \\
+    Rainbow Badge & 1{,}100{,}000 & 0/0 & 0.500 & [0.024, 0.974] & pursue \\
+    Soul Badge & 1{,}250{,}000 & 0/0 & 0.500 & [0.024, 0.975] & pursue \\
+    Marsh Badge & 1{,}400{,}000 & 0/0 & 0.500 & [0.025, 0.975] & pursue \\
+    Volcano Badge & 1{,}550{,}000 & 0/0 & 0.500 & [0.023, 0.975] & pursue \\
+    Earth Badge & 1{,}650{,}000 & 0/0 & 0.500 & [0.025, 0.974] & pursue \\
+    Champion & 1{,}800{,}000 & 0/0 & 0.500 & [0.024, 0.977] & pursue \\
+    \bottomrule
+  \end{tabular}
+  \caption{Badge posteriors from \texttt{archive\_20251117}. No badges were completed, so all means remain at the prior value of 0.5; decisions depend solely on the configured thresholds.}
+  \label{tab:posterior-table}
+\end{table}
+
+\section{Results}
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lccc}
+    \toprule
+    Milestone & Successes/Trials & Posterior Mean & Decision \\ \midrule
+    Oak Parcel Assigned & 0/32 & 0.029 & Defer \\
+    New Town Visited    & 32/32 & 0.971 & Pursue \\
+    Pokemon Defeated 1  & 6/32 & 0.206 & Defer \\
+    \bottomrule
+  \end{tabular}
+  \caption{Posterior snapshot from \texttt{artifacts/runs/local\_20251130/progress\_metrics.json} (episode 4, 384k steps).}
+\end{table}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lcccc}
+    \toprule
+    Reward Target & Successes/Trials & Posterior Mean & 95\% CI & Step \\ \midrule
+    Episode Return $\ge 1500$ & 32/32 & 0.971 & [0.891, 0.999] & 384k \\
+    Exploration Progress $\ge 120$ & 10/32 & 0.324 & [0.180, 0.487] & 384k \\
+    Frontier Push $\ge 60$ & 32/32 & 0.971 & [0.896, 0.999] & 384k \\
+    Visit Bonus $\ge 15$ & 6/32 & 0.206 & [0.090, 0.358] & 384k \\
+    Story Flags $\ge 400$ & 0/32 & 0.029 & [0.001, 0.105] & 384k \\
+    Quest Chain $\ge 300$ & 0/32 & 0.029 & [0.001, 0.109] & 384k \\
+    RND Bonus $\ge 20$ & 0/32 & 0.029 & [0.001, 0.104] & 384k \\
+    \bottomrule
+  \end{tabular}
+  \caption{Reward-success posteriors derived from \texttt{artifacts/reward\_success\_timeseries.csv}.}
+\end{table}
+
+Narrative bullet points:
+\begin{itemize}
+  \item Parcel chain remains unsatisfied---after 32 trials the posterior mean is $0.029$ with a wide interval, so the posterior-driven RND knob still uses its maximum exploration scale.
+  \item ``New Town'' continues to saturate (32/32 successes), which keeps the visit/exploration bonuses high even though story-flag metrics remain at their priors.
+  \item Battle wins show up in the \texttt{Pokemon Defeated 1} posterior and in the reward-success table (episode-return \& frontier-push saturated), but the visit bonus and story/quest targets trail, highlighting where curriculum needs to focus.
+\end{itemize}
+
+\section{Next Steps}
+\begin{itemize}
+  \item Integrate posterior-driven reward scaling (via \texttt{analysis/rewards.py}).
+  \item Produce final figures using \texttt{analysis/plots.py} once \texttt{artifacts/runs/*/progress\_metrics.json} files are archived.
+  \item Summarize lead-time metrics from \texttt{analysis/evaluation.py}.
+\end{itemize}
+
+\section{Appendix}
+\subsection{Generating Figures}
+After copying run artifacts into \texttt{artifacts/runs/<run\_id>/progress\_metrics.json}, run:
+\begin{verbatim}
+PYTHONPATH=. .venv/bin/python analysis/run_pipeline.py
+
+PYTHONPATH=. .venv/bin/python analysis/reward_success.py \
+  --log logs/local_train_20251130_020154.log \
+  --csv-output artifacts/reward_success_timeseries.csv \
+  --figure-output figures/reward_success_timeseries.pdf
+
+overwrite plots/parcel_posterior.py # see instructions in repo
+\end{verbatim}
+
+\end{document}

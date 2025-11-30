@@ -1,0 +1,788 @@
+{
+  "_comment_overview": "Human-readable comments describing every configurable lever.",
+  "_comment_rom": "Game Boy ROM to load; resolved relative to this config directory if not absolute.",
+  "rom": "pokemon_red.gb",
+  "rom_fallbacks": [
+    "pokemon_red.gb"
+  ],
+  "_comment_episodes": "Number of full training episodes to run.",
+  "episodes": 5,
+  "_comment_max_steps": "Max emulator steps allowed per episode before forcing a reset.",
+  "max_steps": 1000000,
+  "_comment_buffer_size": "Replay buffer capacity for storing past transitions.",
+  "buffer_size": 10000000,
+  "_comment_batch_size": "Mini-batch size sampled from the replay buffer each update.",
+  "batch_size": 64,
+  "_comment_learning_rate": "Optimizer learning rate for the DQN.",
+  "learning_rate": 0.0001,
+  "_comment_gamma": "Discount factor applied to future rewards.",
+  "gamma": 0.99,
+  "_comment_learning_starts": "Number of steps collected before training updates begin.",
+  "learning_starts": 20000,
+  "_comment_train_frequency": "How many env steps to take between gradient updates.",
+  "train_frequency": 8,
+  "_comment_target_sync": "Steps between target-network weight copies.",
+  "target_sync": 3000,
+  "_comment_epsilon_start": "Initial epsilon value for epsilon-greedy exploration.",
+  "epsilon_start": 1.0,
+  "_comment_epsilon_end": "Minimum epsilon after decay completes.",
+  "epsilon_end": 0.25,
+  "_comment_epsilon_decay_steps": "Number of steps over which epsilon decays from start to end.",
+  "epsilon_decay_steps": 100000000,
+  "_comment_save_dir": "Directory where checkpoints and logs are written.",
+  "save_dir": "checkpoints",
+  "_comment_save_every": "Episodes between checkpoint saves.",
+  "save_every": 200,
+  "_comment_log_interval": "Steps between console logging of training metrics.",
+  "log_interval": 100,
+  "_comment_perf_logging_enabled": "Enable periodic logging of steps/sec to a CSV file.",
+  "perf_logging_enabled": true,
+  "_comment_perf_log_path": "CSV file to append performance samples (created if missing).",
+  "perf_log_path": "checkpoints/perf_log.csv",
+  "_comment_perf_log_interval_steps": "Step interval between performance (steps/sec) samples.",
+  "perf_log_interval_steps": 100,
+  "_comment_reward_likelihood_enabled": "Track likelihood of rewards above a threshold over rolling windows.",
+  "reward_likelihood_enabled": true,
+  "_comment_reward_likelihood_threshold": "Reward value considered a 'significant' event.",
+  "reward_likelihood_threshold": 200.0,
+  "_comment_reward_likelihood_interval_steps": "Number of steps per likelihood window.",
+  "reward_likelihood_interval_steps": 100,
+  "_comment_reward_likelihood_log_path": "CSV file to append reward-likelihood samples (created if missing).",
+  "reward_likelihood_log_path": "checkpoints/reward_likelihood.csv",
+  "_comment_use_ssm_encoder": "Enable the lightweight SSM side-encoder that augments the CNN features.",
+  "use_ssm_encoder": true,
+  "_comment_ssm_state_dim": "State size per SSM head (controls recurrent memory size).",
+  "ssm_state_dim": 48,
+  "_comment_ssm_head_dim": "Output dimension per SSM head (controls appended feature size).",
+  "ssm_head_dim": 32,
+  "_comment_ssm_heads": "Number of SSM heads (multi-value style; shared B/C projections).",
+  "ssm_heads": 3,
+  "_comment_ssm_layers": "How many stacked lightweight SSM blocks to apply.",
+  "ssm_layers": 1,
+  "_comment_gru_hidden_size": "Hidden size for the GRU block in the recurrent core.",
+  "gru_hidden_size": 192,
+  "_comment_lstm_hidden_size": "Hidden size for the LSTM block in the recurrent core.",
+  "lstm_hidden_size": 192,
+  "_comment_auxiliary_loss_coef": "Scaling factor for auxiliary losses (e.g., reconstruction).",
+  "auxiliary_loss_coef": 0.0,
+  "_comment_novelty_loss_coef": "Weight for the novelty critic loss that aligns goal conditioning with exploration progress.",
+  "novelty_loss_coef": 0.0,
+  "_comment_progress_interval": "Episodes between progress-report prints.",
+  "progress_interval": 10,
+  "_comment_display_envs": "How many parallel env windows to display (0 disables display).",
+  "display_envs": 0,
+  "_comment_expose_visit_features": "Include visitation statistics in observations when true.",
+  "expose_visit_features": true,
+  "_comment_delete_sav_on_reset": "Delete emulator .sav files when resetting to avoid carryover state.",
+  "delete_sav_on_reset": true,
+  "_comment_seed": "Random seed fed to envs and torch for reproducibility.",
+  "seed": 7,
+  "_comment_frame_skip": "Number of frames to repeat each chosen action (speed vs. fidelity).",
+  "frame_skip": 18,
+  "_comment_input_spacing_frames": "Frames of no input inserted between button presses.",
+  "input_spacing_frames": 4,
+  "_comment_boot_steps": "Bootstrapping steps to let the ROM reach gameplay before acting.",
+  "boot_steps": 200,
+  "_comment_no_input_timeout": "Frames of inactivity allowed before treating the agent as stuck.",
+  "no_input_timeout": 400,
+  "_comment_state_path": "Optional initial savestate to load (null starts from power-on).",
+  "state_path": null,
+  "_comment_render_map": "Render route maps during training when true (debug visualization).",
+  "render_map": true,
+  "_comment_map_refresh": "Frames between refreshes of the per-env map overlay (smaller = smoother).",
+  "map_refresh": 8,
+  "_comment_aggregate_map_refresh": "Frames between aggregate map updates across envs.",
+  "aggregate_map_refresh": 16,
+  "_comment_map_fps": "Target FPS for Matplotlib map figures (0 disables throttling).",
+  "map_fps": 30,
+  "_comment_record_best_episode": "Capture the highest-reward episode trace and sampled frames for replay.",
+  "record_best_episode": true,
+  "_comment_best_trace_path": "JSON file that stores the coordinates/maps visited by the best-performing episode.",
+  "best_trace_path": "checkpoints/best_episode_trace.json",
+  "_comment_best_replay_path": "NPZ file that stores sampled raw frames from the best-performing episode.",
+  "best_replay_path": "checkpoints/best_episode_frames.npz",
+  "_comment_best_frame_interval": "Store every Nth frame when recording the best episode to control disk usage.",
+  "best_frame_interval": 8,
+  "_comment_best_frame_limit": "Maximum number of sampled frames to keep for the best episode capture.",
+  "best_frame_limit": 12000,
+  "_comment_visit_counts": "Global/episodic visit-count novelty bonuses.",
+  "visit_count_enabled": false,
+  "visit_count_scale": 0.0,
+  "visit_count_alpha": 1.0,
+  "visit_count_beta": 0.1,
+  "visit_count_epsilon": 1.0,
+  "visit_count_bin_size": 4,
+  "visit_count_include_story": false,
+  "_comment_map_transition": "Bonus (scaled) for the first few crossings between map ids.",
+  "map_transition_scale": 0.0,
+  "map_transition_max_visits": 8,
+  "_comment_rnd": "Random Network Distillation intrinsic reward knobs.",
+  "rnd_enabled": false,
+  "rnd_scale": 0.0,
+  "_comment_posterior_rnd_enabled": "When true, derive the RND scale from a milestone posterior at episode boundaries.",
+  "posterior_rnd_enabled": false,
+  "_comment_posterior_rnd_event": "Name of the progress event that drives the posterior-derived RND scale.",
+  "posterior_rnd_event": "Oak Parcel Assigned",
+  "_comment_posterior_rnd_bounds": "Min/max RND scale used for posterior=1 vs posterior=0.",
+  "posterior_rnd_bounds": [
+    0.4,
+    0.9
+  ],
+  "rnd_hidden_dim": 256,
+  "rnd_learning_rate": 0.0001,
+  "rnd_anneal_steps": 5000000,
+  "_comment_episodic_novelty": "Episodic latent-memory novelty bonus.",
+  "episodic_bonus_scale": 0.0,
+  "episodic_memory_size": 256,
+  "episodic_distance_threshold": 0.8,
+  "_comment_state_archive": "Go-Explore style state archive configuration.",
+  "state_archive_enabled": true,
+  "state_archive_dir": "state_archive",
+  "state_archive_max_cells": 10000,
+  "state_archive_capture_min_visits": 4,
+  "state_archive_reset_prob": 0.2,
+  "_comment_reward_thresholds": "List of reward-likelihood trackers (episode_total, reward_component, intrinsic_component).",
+  "reward_thresholds": [
+    {
+      "name": "episode_return_1500",
+      "threshold": 1500.0,
+      "source": "episode_total"
+    },
+    {
+      "name": "story_flags_400",
+      "component": "StoryFlagReward",
+      "threshold": 400.0,
+      "source": "reward_component"
+    },
+    {
+      "name": "quest_chain_300",
+      "component": "QuestReward",
+      "threshold": 300.0,
+      "source": "reward_component"
+    },
+    {
+      "name": "exploration_progress_120",
+      "component": "ExplorationProgressReward",
+      "threshold": 120.0,
+      "source": "reward_component"
+    },
+    {
+      "name": "frontier_push_60",
+      "component": "ExplorationFrontierReward",
+      "threshold": 60.0,
+      "source": "reward_component"
+    },
+    {
+      "name": "visit_bonus_15",
+      "component": "visit",
+      "threshold": 15.0,
+      "source": "intrinsic_component"
+    },
+    {
+      "name": "rnd_bonus_20",
+      "component": "rnd",
+      "threshold": 20.0,
+      "source": "intrinsic_component"
+    }
+  ],
+  "_comment_reward_metrics_path": "Path to write reward-threshold posterior statistics.",
+  "reward_metrics_path": "checkpoints/reward_metrics.json",
+  "_comment_auto_demo_after_training": "Automatically run a demo replay using the best checkpoint after training completes.",
+  "auto_demo_after_training": false,
+  "_comment_demo_episodes": "How many demo episodes to play when auto-demo is enabled.",
+  "demo_episodes": 1,
+  "_comment_demo_max_steps": "Maximum steps per demo episode (defaults to training max_steps).",
+  "demo_max_steps": 100000,
+  "_comment_demo_save_map": "Path to save the aggregate map after the demo (null to skip saving).",
+  "demo_save_map": "checkpoints/demo_map.png",
+  "_comment_demo_show_progress": "Print Bayesian progress metrics before running the demo replay.",
+  "demo_show_progress": true,
+  "_comment_headless_mode": "Bundle of defaults that make headless operation safe when true.",
+  "headless_mode": false,
+  "_comment_show_env_maps": "Show small environment map windows in addition to gameplay feed.",
+  "show_env_maps": false,
+  "_comment_render_gameplay_grid": "Render the tiled gameplay grid (set false to only show the aggregate map).",
+  "render_gameplay_grid": true,
+  "_comment_gameplay_fps": "Target FPS for the gameplay grid window (0 disables throttling).",
+  "gameplay_fps": 24,
+  "_comment_headless": "Disable SDL windows entirely (no GUI output).",
+  "headless": false,
+  "_comment_verbose_logs": "Emit verbose per-step logging when enabled.",
+  "verbose_logs": true,
+  "_comment_num_envs": "Number of parallel environment instances to run.",
+  "num_envs": 8,
+  "_comment_vectorized": "Run envs via vectorized API when true (experimental).",
+  "vectorized": false,
+  "_comment_n_step": "Number of steps used for n-step return targets.",
+  "n_step": 256,
+  "_comment_mapexplore_base": "Base reward granted by MapExplorationReward for new tiles.",
+  "mapexplore_base": 0.35,
+  "_comment_mapexplore_neighbor_radius": "Radius of neighbor tiles considered for smoothing exploration reward.",
+  "mapexplore_neighbor_radius": 1,
+  "_comment_mapexplore_neighbor_weight": "Contribution from neighbor coverage to exploration reward.",
+  "mapexplore_neighbor_weight": 0.02,
+  "_comment_mapexplore_distance_weight": "Weight for rewarding frontier distance from prior visits.",
+  "mapexplore_distance_weight": 0.45,
+  "_comment_mapexplore_min_reward": "Minimum exploration reward floor when movement is low.",
+  "mapexplore_min_reward": 0.05,
+  "_comment_mapexplore_persist": "Carry exploration statistics across resets if true.",
+  "mapexplore_persist": false,
+  "_comment_persist_map": "Save accumulated exploration maps to disk between runs.",
+  "persist_map": true,
+  "_comment_save_map_images": "If true, dump map PNGs to disk periodically.",
+  "save_map_images": false,
+  "_comment_map_image_every": "Episodes between saved map image dumps.",
+  "map_image_every": 10,
+  "_comment_novelty_base": "Base reward emitted by the screen-novelty detector.",
+  "novelty_base": 0.85,
+  "_comment_novelty_decay": "Decay factor applied to novelty bonuses over time.",
+  "novelty_decay": 0.9,
+  "_comment_novelty_min_reward": "Lower bound for novelty-based reward.",
+  "novelty_min_reward": 0.05,
+  "_comment_novelty_stride": "Pixel stride used when sampling frames for novelty hashing.",
+  "novelty_stride": 4,
+  "_comment_novelty_quantisation": "Number of buckets used when quantizing novelty hashes.",
+  "novelty_quantisation": 32,
+  "_comment_novelty_persist": "Persist novelty statistics between episodes when true.",
+  "novelty_persist": false,
+  "_comment_embedding_base": "Base reward for distances in the learned embedding space.",
+  "embedding_base": 0.45,
+  "_comment_embedding_decay": "Decay applied to embedding rewards after repeats.",
+  "embedding_decay": 0.93,
+  "_comment_embedding_min_reward": "Minimum embedding reward after repeated visits.",
+  "embedding_min_reward": 0.08,
+  "_comment_embedding_include_map": "Include tile-map features when building embeddings.",
+  "embedding_include_map": true,
+  "_comment_embedding_persist": "Persist embedding-based novelty stats across episodes.",
+  "embedding_persist": false,
+  "_comment_battle_win_reward": "Reward added after winning any battle.",
+  "battle_win_reward": 60.0,
+  "_comment_battle_loss_penalty": "Penalty applied when the agent loses a battle.",
+  "battle_loss_penalty": -30.0,
+  "_comment_battle_damage_scale": "Scale factor for rewarding net damage dealt.",
+  "battle_damage_scale": 4.0,
+  "_comment_battle_escape_penalty": "Penalty assessed when running from battles.",
+  "battle_escape_penalty": -8.0,
+  "_comment_badge_reward": "Reward for earning a gym badge.",
+  "badge_reward": 1500.0,
+  "_comment_story_flag_default_reward": "Fallback reward for any story flag trigger without a custom value.",
+  "story_flag_default_reward": 280.0,
+  "_comment_story_flags": "Optional mapping of story flag ids to explicit rewards.",
+  "story_flags": {
+    "oak_parcel_assigned": {
+      "address": "0xD74E",
+      "bit": 0,
+      "reward": 220.0
+    },
+    "oak_parcel_received": {
+      "address": "0xD74E",
+      "bit": 1,
+      "reward": 850.0
+    },
+    "oak_pokeballs_received": {
+      "address": "0xD74B",
+      "bit": 4,
+      "reward": 1200.0
+    },
+    "oak_pokedex_received": {
+      "address": "0xD74B",
+      "bit": 5,
+      "reward": 520.0
+    },
+    "boulder_badge_flag": {
+      "address": "0xD356",
+      "bit": 0,
+      "reward": 1600.0
+    }
+  },
+  "_comment_champion_reward": "Reward for defeating the champion after the Elite Four.",
+  "champion_reward": 4000.0,
+  "_comment_latent_event_reward": "Reward for latent scripted events detected by sensors.",
+  "latent_event_reward": 0.0,
+  "_comment_latent_event_revisit_decay": "Decay multiplier for repeated latent event triggers.",
+  "latent_event_revisit_decay": 0.5,
+  "_comment_item_reward": "Reward for collecting regular overworld items.",
+  "item_reward": 1.0,
+  "_comment_key_item_reward": "Reward for collecting key items that unlock progress.",
+  "key_item_reward": 12.0,
+  "_comment_key_item_ids": "List of item ids that count as key items.",
+  "key_item_ids": [],
+  "_comment_pokedex_new_species_reward": "Reward for registering a Pok\u00e9mon not yet in the Pok\u00e9dex.",
+  "pokedex_new_species_reward": 10.0,
+  "_comment_pokedex_milestones": "Bonus rewards for reaching listed Pok\u00e9dex counts.",
+  "pokedex_milestones": [
+    [
+      10,
+      50.0
+    ],
+    [
+      30,
+      150.0
+    ],
+    [
+      60,
+      350.0
+    ]
+  ],
+  "_comment_trainer_wild_reward": "Bonus for defeating wild Pok\u00e9mon encounters.",
+  "trainer_wild_reward": 5.0,
+  "_comment_trainer_trainer_reward": "Bonus for beating standard trainer battles.",
+  "trainer_trainer_reward": 25.0,
+  "_comment_trainer_gym_reward": "Bonus for defeating gym-affiliated trainers.",
+  "trainer_gym_reward": 150.0,
+  "_comment_trainer_elite_reward": "Bonus for beating Elite Four trainers.",
+  "trainer_elite_reward": 400.0,
+  "_comment_gym_map_ids": "List of map ids that should be treated as gym arenas.",
+  "gym_map_ids": [
+    6,
+    11,
+    14,
+    18,
+    24,
+    2,
+    33,
+    34
+  ],
+  "_comment_elite_map_ids": "List of map ids for Elite Four arenas.",
+  "elite_map_ids": [
+    63,
+    64,
+    65,
+    66,
+    67
+  ],
+  "_comment_quest_definitions": "Quest list awarding a reward the first time a map id is visited.",
+  "quest_definitions": [
+    {
+      "name": "viridian_chain",
+      "repeatable": false,
+      "stages": [
+        {
+          "label": "route1_exit",
+          "map_id": 10,
+          "reward": 280.0
+        },
+        {
+          "label": "viridian_arrival",
+          "map_id": 5,
+          "reward": 360.0
+        },
+        {
+          "label": "viridian_mart",
+          "map_id": 7,
+          "reward": 360.0
+        },
+        {
+          "label": "parcel_assigned",
+          "story_flag": "oak_parcel_assigned",
+          "reward": 520.0
+        },
+        {
+          "label": "parcel_delivered",
+          "story_flag": "oak_parcel_received",
+          "reward": 900.0
+        }
+      ]
+    },
+    {
+      "name": "pewter_push",
+      "repeatable": false,
+      "stages": [
+        {
+          "label": "route2_top",
+          "map_id": 11,
+          "reward": 260.0
+        },
+        {
+          "label": "viridian_forest_run",
+          "map_id": 12,
+          "reward": 240.0
+        },
+        {
+          "label": "pewter_arrival",
+          "map_id": 14,
+          "reward": 450.0
+        },
+        {
+          "label": "boulder_badge_progress",
+          "story_flag": "boulder_badge_flag",
+          "reward": 1500.0
+        }
+      ]
+    }
+  ],
+  "_comment_progress_events": "Bayesian progress tracking targets that report the probability of clearing badges, flags, or Elite Four within the given step limit.",
+  "progress_events": [
+    {
+      "name": "Oak Parcel Assigned",
+      "type": "story_flag",
+      "flag_key": "oak_parcel_assigned",
+      "step_limit": 120000,
+      "decision_threshold": 0.7
+    },
+    {
+      "name": "Oak Parcel Delivered",
+      "type": "story_flag",
+      "flag_key": "oak_parcel_received",
+      "step_limit": 200000,
+      "decision_threshold": 0.7
+    },
+    {
+      "name": "Oak Poké Balls Received",
+      "type": "story_flag",
+      "flag_key": "oak_pokeballs_received",
+      "step_limit": 260000,
+      "decision_threshold": 0.65
+    },
+    {
+      "name": "Pokédex Registered",
+      "type": "story_flag",
+      "flag_key": "oak_pokedex_received",
+      "step_limit": 320000,
+      "decision_threshold": 0.65
+    },
+    {
+      "name": "Boulder Badge Flag",
+      "type": "story_flag",
+      "flag_key": "boulder_badge_flag",
+      "step_limit": 550000,
+      "decision_threshold": 0.6
+    },
+    {
+      "name": "Pokemon Defeated 20",
+      "type": "counter",
+      "counter_key": "pokemon_defeated_total",
+      "count_threshold": 20,
+      "step_limit": 400000,
+      "decision_threshold": 0.65
+    },
+    {
+      "name": "Pokemon Captured 10",
+      "type": "counter",
+      "counter_key": "pokemon_caught_total",
+      "count_threshold": 10,
+      "step_limit": 400000,
+      "decision_threshold": 0.65
+    },
+    {
+      "name": "Pokemon Defeated 1",
+      "type": "counter",
+      "counter_key": "pokemon_defeated_total",
+      "count_threshold": 1,
+      "step_limit": 120000,
+      "decision_threshold": 0.7
+    },
+    {
+      "name": "Battles Lost 1",
+      "type": "counter",
+      "counter_key": "battle_losses_total",
+      "count_threshold": 1,
+      "step_limit": 150000,
+      "decision_threshold": 0.7
+    },
+    {
+      "name": "Blackouts 1",
+      "type": "counter",
+      "counter_key": "battle_blackouts_total",
+      "count_threshold": 1,
+      "step_limit": 200000,
+      "decision_threshold": 0.7
+    },
+    {
+      "name": "Flees 1",
+      "type": "counter",
+      "counter_key": "battle_flees_total",
+      "count_threshold": 1,
+      "step_limit": 120000,
+      "decision_threshold": 0.7
+    },
+    {
+      "name": "New Town Visited",
+      "type": "counter",
+      "counter_key": "unique_towns_visited",
+      "count_threshold": 1,
+      "absolute_counter": true,
+      "step_limit": 200000,
+      "decision_threshold": 0.6
+    },
+    {
+      "name": "Pokedex 10 Species",
+      "type": "counter",
+      "counter_key": "pokedex_owned_count",
+      "count_threshold": 10,
+      "step_limit": 450000,
+      "decision_threshold": 0.6
+    },
+    {
+      "name": "Boulder Badge",
+      "type": "badge",
+      "badge_index": 1,
+      "step_limit": 600000,
+      "decision_threshold": 0.6
+    },
+    {
+      "name": "Cascade Badge",
+      "type": "badge",
+      "badge_index": 2,
+      "step_limit": 800000,
+      "decision_threshold": 0.55
+    },
+    {
+      "name": "Thunder Badge",
+      "type": "badge",
+      "badge_index": 3,
+      "step_limit": 950000,
+      "decision_threshold": 0.5
+    },
+    {
+      "name": "Rainbow Badge",
+      "type": "badge",
+      "badge_index": 4,
+      "step_limit": 1100000,
+      "decision_threshold": 0.5
+    },
+    {
+      "name": "Soul Badge",
+      "type": "badge",
+      "badge_index": 5,
+      "step_limit": 1250000,
+      "decision_threshold": 0.45
+    },
+    {
+      "name": "Marsh Badge",
+      "type": "badge",
+      "badge_index": 6,
+      "step_limit": 1400000,
+      "decision_threshold": 0.45
+    },
+    {
+      "name": "Volcano Badge",
+      "type": "badge",
+      "badge_index": 7,
+      "step_limit": 1550000,
+      "decision_threshold": 0.4
+    },
+    {
+      "name": "Earth Badge",
+      "type": "badge",
+      "badge_index": 8,
+      "step_limit": 1700000,
+      "decision_threshold": 0.4
+    },
+    {
+      "name": "Champion",
+      "type": "champion",
+      "badge_index": 9,
+      "step_limit": 2000000,
+      "decision_threshold": 0.35
+    }
+  ],
+  "_comment_progress_metrics_path": "JSON file where Bayesian progress summaries are stored after training.",
+  "progress_metrics_path": "checkpoints/progress_metrics.json",
+  "_comment_frontier_reward": "Reward applied when moving into frontier cells never visited before.",
+  "frontier_reward": 4.0,
+  "_comment_frontier_min_gain": "Minimum unique frontier cells required before awarding the frontier bonus.",
+  "frontier_min_gain": 2,
+  "_comment_map_visit_reward": "Reward for the first visit to each distinct map id.",
+  "map_visit_reward": 80.0,
+  "_comment_exploration_progress_reward": "Bonus per new unique tile discovered within an episode.",
+  "exploration_progress_reward": 1.2,
+  "_comment_stagnation_timeout": "Steps allowed without new unique tiles before stagnation penalties begin.",
+  "stagnation_timeout": 900,
+  "_comment_stagnation_penalty": "Penalty applied periodically once the stagnation timeout is exceeded.",
+  "stagnation_penalty": -12.0,
+  "_comment_stagnation_penalty_interval": "Step interval between successive stagnation penalties.",
+  "stagnation_penalty_interval": 120,
+  "_comment_revisit_penalty_base": "Base penalty added when returning to the same map repeatedly.",
+  "revisit_penalty_base": 0.0,
+  "_comment_revisit_penalty_excess": "Additional penalty applied once revisit ratio exceeds the threshold.",
+  "revisit_penalty_excess": 0.0,
+  "_comment_revisit_penalty_ratio": "Visit ratio threshold that enables the excess revisit penalty.",
+  "revisit_penalty_ratio": 0.0,
+  "_comment_step_penalty": "Per-step penalty to discourage aimless wandering.",
+  "step_penalty": -0.0001,
+  "_comment_idle_penalty": "Penalty applied when the idle step threshold is exceeded.",
+  "idle_penalty": -0.05,
+  "_comment_idle_threshold": "Steps without progress allowed before the idle penalty triggers.",
+  "idle_threshold": 30,
+  "_comment_loss_penalty": "Penalty for losing a Pok\u00e9mon battle (fainting).",
+  "loss_penalty": -30.0,
+  "_comment_blackout_penalty": "Penalty for a blackout/party wipe event.",
+  "blackout_penalty": -60.0,
+  "_comment_low_hp_threshold": "HP ratio considered 'low' for the safety penalty.",
+  "low_hp_threshold": 0.15,
+  "_comment_low_hp_penalty": "Penalty applied while the active Pok\u00e9mon is below the low HP threshold.",
+  "low_hp_penalty": -3.0,
+  "_comment_resource_map_keywords": "List of keywords that mark resource maps (Pok\u00e9 Centers, etc.).",
+  "resource_map_keywords": [
+    "pokemon center",
+    "pok\u00e9mon center",
+    "poke center"
+  ],
+  "_comment_resource_map_reward": "Reward for reaching a resource map.",
+  "resource_map_reward": 0.0,
+  "_comment_resource_item_ids": "Item ids that count as resource pickups for rewards.",
+  "resource_item_ids": [
+    13,
+    14,
+    34
+  ],
+  "_comment_resource_item_reward": "Reward granted when collecting a resource item.",
+  "resource_item_reward": 0.0,
+  "_comment_pallet_penalty_map_id": "Legacy single map id treated as Pallet Town for stagnation penalties (ignored when map list below is provided).",
+  "pallet_penalty_map_id": 0,
+  "_comment_pallet_penalty_map_ids": "Set of map ids treated as part of Pallet Town; staying within any of them counts toward the Pallet penalty.",
+  "pallet_penalty_map_ids": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    10
+  ],
+  "_comment_pallet_penalty_interval": "Steps between Pallet Town stagnation penalty applications.",
+  "pallet_penalty_interval": 60,
+  "_comment_pallet_penalty": "Penalty magnitude when staying in Pallet Town too long.",
+  "pallet_penalty": -30.0,
+  "_comment_pallet_penalty_escalate_mode": "Escalation mode for repeated Pallet penalties (none/linear/exponential/quadratic).",
+  "pallet_penalty_escalate_mode": "linear",
+  "_comment_pallet_penalty_escalate_rate": "Rate multiplier for the Pallet penalty escalation.",
+  "pallet_penalty_escalate_rate": 0.5,
+  "_comment_pallet_penalty_max_penalty": "Optional clamp for the Pallet penalty escalation.",
+  "pallet_penalty_max_penalty": -60.0,
+  "_comment_map_stay_penalties": "Additional stay-penalty groups; each entry sets map_ids/map_id, interval, penalty, and an optional name.",
+  "map_stay_penalties": [
+    {
+      "name": "route1_cluster",
+      "map_ids": [
+        10
+      ],
+      "interval": 120,
+      "penalty": -18.0
+    },
+    {
+      "name": "route2_cluster",
+      "map_ids": [
+        11
+      ],
+      "interval": 200,
+      "penalty": -10.0
+    },
+    {
+      "name": "viridian_cluster",
+      "map_ids": [
+        5,
+        7,
+        8,
+        9
+      ],
+      "interval": 320,
+      "penalty": -6.0
+    },
+    {
+      "name": "viridian_gym_cluster",
+      "map_ids": [
+        6
+      ],
+      "interval": 260,
+      "penalty": -10.0
+    },
+    {
+      "name": "viridian_forest_cluster",
+      "map_ids": [
+        12
+      ],
+      "interval": 420,
+      "penalty": -4.0
+    },
+    {
+      "name": "pewter_cluster",
+      "map_ids": [
+        13,
+        14,
+        20,
+        21,
+        22,
+        24
+      ],
+      "interval": 360,
+      "penalty": -4.0
+    },
+    {
+      "name": "route3_cluster",
+      "map_ids": [
+        16
+      ],
+      "interval": 320,
+      "penalty": -7.0
+    },
+    {
+      "name": "mt_moon_cluster",
+      "map_ids": [
+        30
+      ],
+      "interval": 360,
+      "penalty": -9.0
+    },
+    {
+      "name": "cerulean_cluster",
+      "map_ids": [
+        18,
+        32,
+        33,
+        34,
+        36
+      ],
+      "interval": 300,
+      "penalty": -10.0
+    }
+  ],
+  "_comment_curriculum_goals": "Optional staged goals for curriculum learning or evaluation.",
+  "curriculum_goals": [],
+  "_comment_curriculum_states": "List of curriculum savestates cycled per env (each entry supports 'path' and 'episodes'; use null path for a fresh boot).",
+  "curriculum_states": [
+    {
+      "path": null,
+      "label": "fresh_boot",
+      "episodes": 1
+    },
+    {
+      "path": "../ARCHIVE/PokemonRedExperiments-master/init.state",
+      "label": "parcel_prep",
+      "episodes": 1,
+      "requires_story_flags": []
+    },
+    {
+      "path": "../ARCHIVE/PokemonRedExperiments-master/has_pokedex.state",
+      "label": "parcel_assigned",
+      "episodes": 1,
+      "requires_story_flags": [
+        "oak_parcel_assigned"
+      ]
+    },
+    {
+      "path": "../ARCHIVE/PokemonRedExperiments-master/has_pokedex_nballs.state",
+      "label": "parcel_delivered",
+      "episodes": 1,
+      "requires_story_flags": [
+        "oak_parcel_received"
+      ]
+    }
+  ],
+  "_comment_auto_curriculum_capture": "When true, save savestates automatically after badges/story flags for curriculum use.",
+  "auto_curriculum_capture": true,
+  "_comment_auto_curriculum_capture_dir": "Directory where auto-captured savestates are written (relative to save_dir when not absolute).",
+  "auto_curriculum_capture_dir": "../curriculum_states",
+  "_comment_auto_curriculum_capture_episodes": "How many curriculum cycles to insert each captured savestate.",
+  "auto_curriculum_capture_episodes": 2,
+  "_comment_auto_curriculum_story_flags": "Story flag names eligible for auto-capture (empty = all tracked flags).",
+  "auto_curriculum_story_flags": [
+    "oak_parcel_assigned",
+    "oak_parcel_received",
+    "oak_pokeballs_received",
+    "oak_pokedex_received",
+    "boulder_badge_flag"
+  ],
+  "_comment_curriculum_events_log_path": "CSV log file tracking curriculum savestate capture events.",
+  "curriculum_events_log_path": "logs/curriculum_events.csv"
+}
