@@ -1,0 +1,63 @@
+# OS / editor noise
+.DS_Store
+*.swp
+*.swo
+*.bak
+*.tmp
+Thumbs.db
+.vscode/
+.idea/
+
+# Python build and virtualenv artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+venv*/
+
+# Training outputs and large binaries
+checkpoints/
+epsilon/pokemon_rl/checkpoints/
+epsilon/curriculum_states/
+curriculum_states/
+artifacts/
+logs/
+
+# Old models / savestates / large numeric dumps
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.sav
+*.state
+*.bin
+*.npy
+*.npz
+
+# Generated CSV tables (retain only curated ones explicitly added)
+*.csv
+
+# Plot dumps, tensors, and media captures
+*.gif
+*.mp4
+*.mov
+*.avi
+*.tfrecord
+
+# Archive bundles
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# Coverage / test outputs
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Misc
+perf.log
+*.log
