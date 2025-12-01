@@ -123,6 +123,38 @@ class VisitCounter:
             return 0.0
         return base_bonus / float(transition_visits)
 
+    def state_dict(self) -> Dict[str, object]:
+        return {
+            "global_counts": list(self.global_counts.items()),
+            "transition_counts": list(self.transition_counts.items()),
+            "prev_map_ids": list(self.prev_map_ids),
+            "bin_size": self.bin_size,
+            "include_story": self.include_story,
+            "story_allowlist": sorted(self.story_allowlist) if self.story_allowlist else None,
+        }
+
+    def load_state_dict(self, state: Optional[Dict[str, object]]) -> None:
+        if not state:
+            return
+        global_counts = state.get("global_counts") or []
+        self.global_counts = defaultdict(int)
+        for cell_id, count in global_counts:
+            try:
+                self.global_counts[tuple(cell_id)] = int(count)
+            except Exception:
+                continue
+        transition_counts = state.get("transition_counts") or []
+        self.transition_counts = defaultdict(int)
+        for key, count in transition_counts:
+            try:
+                self.transition_counts[tuple(key)] = int(count)
+            except Exception:
+                continue
+        prev_ids = state.get("prev_map_ids") or []
+        for idx in range(min(len(prev_ids), len(self.prev_map_ids))):
+            value = prev_ids[idx]
+            self.prev_map_ids[idx] = None if value is None else int(value)
+
 
 class EpisodicLatentMemory:
     """Per-env episodic memory that emits a bonus for latents far from prior states."""
@@ -153,3 +185,31 @@ class EpisodicLatentMemory:
                 buffer.pop(0)
             return min(2.0, min_dist / self.distance_threshold)
         return 0.0
+
+    def state_dict(self) -> Dict[str, object]:
+        return {
+            "buffers": [
+                [vec.tolist() for vec in buffer]
+                for buffer in self._buffers
+            ]
+        }
+
+    def load_state_dict(self, state: Optional[Dict[str, object]]) -> None:
+        if not state:
+            return
+        buffers = state.get("buffers") or []
+        restored: list[list[np.ndarray]] = []
+        for env_buffer in buffers:
+            env_list: list[np.ndarray] = []
+            for vec in env_buffer or []:
+                try:
+                    arr = np.asarray(vec, dtype=np.float32)
+                except Exception:
+                    continue
+                env_list.append(arr)
+                if len(env_list) >= self.max_items:
+                    break
+            restored.append(env_list)
+        while len(restored) < self.num_envs:
+            restored.append([])
+        self._buffers = restored[: self.num_envs]

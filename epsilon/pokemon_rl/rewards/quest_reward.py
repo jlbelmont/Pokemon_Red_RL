@@ -21,7 +21,17 @@ class QuestReward:
         map_id = stage.get("map_id")
         story_flag = stage.get("story_flag")
         coords = stage.get("coords")
-        if map_id is None and story_flag is None and not coords:
+        map_name = stage.get("map_name")
+        town = stage.get("town") or stage.get("town_label")
+        badge = stage.get("badge")
+        if (
+            map_id is None
+            and story_flag is None
+            and not coords
+            and not map_name
+            and not town
+            and not badge
+        ):
             return None
         reward = float(stage.get("reward", default_reward))
         requires = stage.get("requires") or []
@@ -29,10 +39,16 @@ class QuestReward:
             requires = [requires]
         requires = [str(req).strip().lower() for req in requires if str(req).strip()]
         label = stage.get("label")
+        map_name_value = map_name.strip().lower() if isinstance(map_name, str) else None
+        town_value = town.strip().lower() if isinstance(town, str) else None
+        badge_value = badge.strip().lower() if isinstance(badge, str) else None
         return {
             "map_id": map_id,
+            "map_name": map_name_value,
             "coords": tuple(coords) if coords else None,
             "story_flag": story_flag,
+            "town": town_value,
+            "badge": badge_value,
             "reward": reward,
             "label": label,
             "requires": set(requires),
@@ -80,15 +96,31 @@ class QuestReward:
             return True
         return requirements.issubset(completed)
 
-    def _match_stage(self, stage: Dict, map_id: int, coords, story_flags: Dict) -> bool:
-        map_match = stage["map_id"] is None or stage["map_id"] == map_id
+    def _match_stage(self, stage: Dict, map_id: int, coords, story_flags: Dict, info: Dict) -> bool:
+        map_match = True
+        if stage["map_id"] is not None:
+            map_match = stage["map_id"] == map_id
+        if map_match and stage["map_name"]:
+            current_name = str(info.get("map_name") or "").strip().lower()
+            map_match = current_name == stage["map_name"]
+        if map_match and stage["town"]:
+            town_flag = info.get("new_town_visited")
+            town_candidates = [
+                str(town_flag).strip().lower() if town_flag else "",
+                str(info.get("map_name") or "").strip().lower(),
+            ]
+            map_match = stage["town"] in town_candidates
         coord_match = True
         if stage["coords"] and coords:
             coord_match = tuple(coords) == tuple(stage["coords"])
         flag_match = True
         if stage["story_flag"]:
             flag_match = bool(story_flags.get(stage["story_flag"], False))
-        return map_match and coord_match and flag_match
+        badge_match = True
+        if stage["badge"]:
+            badges = info.get("badges") or {}
+            badge_match = bool(badges.get(stage["badge"], False))
+        return map_match and coord_match and flag_match and badge_match
 
     def compute(self, obs, info: Dict) -> float:
         if not self.quests:
@@ -114,7 +146,7 @@ class QuestReward:
             stage = quest["stages"][stage_index]
             if not self._requirements_met(stage["requires"], self._completed_quests):
                 continue
-            if self._match_stage(stage, map_id, coords, story_flags):
+            if self._match_stage(stage, map_id, coords, story_flags, info):
                 reward += stage["reward"]
                 stage_index += 1
                 self._quest_progress[quest_name] = stage_index

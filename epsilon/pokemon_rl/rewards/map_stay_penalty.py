@@ -11,6 +11,7 @@ class MapStayPenalty:
         *,
         map_id: int | None = 0,
         map_ids: Iterable[int] | None = None,
+        map_names: Iterable[str] | None = None,
         interval: int = 200,
         penalty: float = -5.0,
         name: str | None = None,
@@ -21,9 +22,16 @@ class MapStayPenalty:
         target_maps: Set[int] = set(int(mid) for mid in map_ids or [])
         if map_id is not None:
             target_maps.add(int(map_id))
-        if not target_maps:
-            raise ValueError("MapStayPenalty requires map_id or map_ids.")
+        target_names: Set[str] = set()
+        for entry in map_names or []:
+            if isinstance(entry, str):
+                norm = entry.strip().lower()
+                if norm:
+                    target_names.add(norm)
+        if not target_maps and not target_names:
+            raise ValueError("MapStayPenalty requires map_id, map_ids, or map_names.")
         self._target_maps: Set[int] = target_maps
+        self._target_map_names: Set[str] = target_names
         self.name = name or "map_stay"
         self.interval = max(1, int(interval))
         self.penalty = float(penalty)
@@ -52,7 +60,11 @@ class MapStayPenalty:
 
     def compute(self, obs, info: Dict) -> float:
         current_map = int(info.get("map_id", -1))
-        if current_map not in self._target_maps:
+        current_name = str(info.get("map_name") or "").strip().lower()
+        in_target = current_map in self._target_maps or (
+            self._target_map_names and current_name in self._target_map_names
+        )
+        if not in_target:
             self._ticks = 0
             self._applications = 0
             return 0.0

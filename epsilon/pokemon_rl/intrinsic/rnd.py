@@ -35,6 +35,16 @@ class RunningRewardNormalizer:
         std = math.sqrt(max(self.var, 1e-6))
         return (values - self.mean) / std
 
+    def state_dict(self) -> dict:
+        return {"mean": self.mean, "var": self.var, "count": self.count}
+
+    def load_state_dict(self, state: Optional[dict]) -> None:
+        if not state:
+            return
+        self.mean = float(state.get("mean", self.mean))
+        self.var = float(state.get("var", self.var))
+        self.count = float(state.get("count", self.count))
+
 
 def _build_mlp(input_dim: int, hidden_dim: int, output_dim: int) -> nn.Sequential:
     return nn.Sequential(
