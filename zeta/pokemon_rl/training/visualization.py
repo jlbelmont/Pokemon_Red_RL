@@ -41,8 +41,6 @@ class KantoAggregateProjector:
         self.tile_scale = max(1, int(tile_scale))
         self.pad = max(0, int(pad_tiles))
         self.regions: dict[int, dict[str, int]] = {}
-        self.regions_by_name: dict[str, dict[str, int]] = {}
-        self.regions_by_name: dict[str, dict[str, int]] = {}
         self._load_layout(layout_path)
         self.overlay_alpha = float(np.clip(overlay_alpha, 0.0, 1.0))
         self.background: Optional[np.ndarray] = None
@@ -52,8 +50,6 @@ class KantoAggregateProjector:
             except Exception as exc:
                 print(f"[visualization] Failed to load aggregate background {background_path}: {exc}")
                 self.background = None
-        if self.background is None:
-            self.background = self._build_fallback_background()
         self.counts = np.zeros((self.height_tiles, self.width_tiles), dtype=np.float32)
         self.pixel_width = self.width_tiles * self.tile_scale
         self.pixel_height = self.height_tiles * self.tile_scale
@@ -75,55 +71,30 @@ class KantoAggregateProjector:
             map_y = int(coords[1]) + self.pad
             width = max(1, int(tile_size[0]))
             height = max(1, int(tile_size[1]))
-            region_info = {"x": map_x, "y": map_y, "w": width, "h": height}
-            self.regions[map_id] = region_info
-            name = str(entry.get("name") or "").strip().lower()
-            if name and name not in self.regions_by_name:
-                self.regions_by_name[name] = region_info
+            self.regions[map_id] = {"x": map_x, "y": map_y, "w": width, "h": height}
             max_x = max(max_x, map_x + width)
             max_y = max(max_y, map_y + height)
         self.width_tiles = max(max_x, 256 + self.pad)
         self.height_tiles = max(max_y, 256 + self.pad)
 
     def accumulate(self, map_id: int, coords: Optional[tuple[int, int]]) -> None:
-        if coords is None:
-            return
-        try:
-            coords_tuple = (int(coords[0]), int(coords[1]))
-        except (TypeError, ValueError):
-            return
         region = self.regions.get(int(map_id))
-        if region is None:
+        if region is None or not coords:
             return
-        self._accumulate_region(region, coords_tuple)
-
-    def accumulate_from_info(self, info: dict) -> None:
-        coords = info.get("agent_coords")
-        if coords is None:
-            return
-        try:
-            coords_tuple = (int(coords[0]), int(coords[1]))
-        except (TypeError, ValueError):
-            return
-        region = None
-        map_id = info.get("map_id")
-        if map_id is not None:
-            region = self.regions.get(int(map_id))
-        if region is None:
-            map_name = str(info.get("map_name") or "").strip().lower()
-            if map_name == "pallet town" and map_id == 1:
-                region = self.regions.get(0)
-            if region is None:
-                region = self.regions_by_name.get(map_name)
-        if region is None:
-            return
-        self._accumulate_region(region, coords_tuple)
-
-    def _accumulate_region(self, region: dict, coords: tuple[int, int]) -> None:
         gx = region["x"] + int(coords[0])
         gy = region["y"] + int(coords[1])
         if 0 <= gx < self.width_tiles and 0 <= gy < self.height_tiles:
             self.counts[gy, gx] += 1.0
+
+    def accumulate_from_info(self, info: dict) -> None:
+        map_id = info.get("map_id")
+        coords = info.get("agent_coords")
+        if map_id is None or coords is None:
+            return
+        try:
+            self.accumulate(int(map_id), (int(coords[0]), int(coords[1])))
+        except (TypeError, ValueError):
+            return
 
     def render(self) -> np.ndarray:
         if self.counts.max() > 0:
@@ -174,29 +145,6 @@ class KantoAggregateProjector:
         w = min(width, image.shape[1])
         padded[:h, :w] = image[:h, :w]
         return padded
-
-    def _build_fallback_background(self) -> np.ndarray:
-        height_px = self.height_tiles * self.tile_scale
-        width_px = self.width_tiles * self.tile_scale
-        canvas = np.zeros((height_px, width_px, 3), dtype=np.float32)
-        canvas[:] = 0.08
-        for map_id, region in self.regions.items():
-            color = self._color_from_id(map_id)
-            x0 = region["x"] * self.tile_scale
-            y0 = region["y"] * self.tile_scale
-            x1 = min(width_px, (region["x"] + region["w"]) * self.tile_scale)
-            y1 = min(height_px, (region["y"] + region["h"]) * self.tile_scale)
-            canvas[y0:y1, x0:x1, :] = color
-        return canvas
-
-    @staticmethod
-    def _color_from_id(map_id: int) -> tuple[float, float, float]:
-        rng = (int(map_id) * 92837111) & 0xFFFFFFFF
-        r = ((rng >> 16) & 0xFF) / 255.0
-        g = ((rng >> 8) & 0xFF) / 255.0
-        b = (rng & 0xFF) / 255.0
-        base = np.array([r, g, b], dtype=np.float32) * 0.6 + 0.3
-        return tuple(np.clip(base, 0.2, 0.9))
 
 
 class RouteMapVisualizer:

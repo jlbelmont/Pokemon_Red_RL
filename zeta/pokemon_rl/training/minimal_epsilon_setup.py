@@ -130,9 +130,6 @@ def _coerce_float_tuple_list(value) -> list[tuple[int, float]]:
     return result
 
 
-MAP_TILE_DENOMINATOR = float(256 * 256)
-
-
 def _summarize_event_hits(event_results: list[dict[str, bool]]) -> Counter[str]:
     """Aggregate per-environment Bayes tracker triggers."""
     counts: Counter[str] = Counter()
@@ -175,8 +172,6 @@ def _coverage_stats(
         "max_unique_tiles": int(max(unique_tiles)) if unique_tiles else 0,
         "max_total_tiles": int(max(total_tiles)) if total_tiles else 0,
         "new_towns": sorted(towns_union),
-        "mean_percent": (float(np.mean(unique_tiles)) / MAP_TILE_DENOMINATOR) if unique_tiles else 0.0,
-        "max_percent": (int(max(unique_tiles)) / MAP_TILE_DENOMINATOR) if unique_tiles else 0.0,
     }
 
 
@@ -184,8 +179,8 @@ def _format_coverage_tiles(stats: dict) -> str:
     if not stats:
         return ""
     return (
-        f"mean={stats['mean_unique_tiles']:.1f} ({stats['mean_percent'] * 100:.2f}%);"
-        f"max={stats['max_unique_tiles']} ({stats['max_percent'] * 100:.2f}%);"
+        f"mean={stats['mean_unique_tiles']:.1f};"
+        f"max={stats['max_unique_tiles']};"
         f"world={stats['max_total_tiles']}"
     )
 
@@ -203,15 +198,8 @@ def _format_coverage_console(stats: dict) -> str:
     towns = stats.get("new_towns") or []
     return (
         f"tiles μ{stats['mean_unique_tiles']:.0f}/max{stats['max_unique_tiles']} "
-        f"world{stats['max_total_tiles']} | pct μ{stats['mean_percent'] * 100:.2f}% "
-        f"| towns+{len(towns)}"
+        f"world{stats['max_total_tiles']} | towns+{len(towns)}"
     )
-
-
-def _format_coverage_percentages(unique_tiles: list[int]) -> str:
-    if not unique_tiles:
-        return ""
-    return ";".join(f"{min(1.0, tiles / MAP_TILE_DENOMINATOR):.4f}" for tiles in unique_tiles)
 
 
 def _coerce_str_list(value) -> list[str]:
@@ -925,7 +913,6 @@ class TrainConfig:
     rnd_scale: float
     posterior_rnd_enabled: bool
     posterior_rnd_event: str
-    posterior_rnd_events: list[dict] | None
     posterior_rnd_bounds: tuple[float, float]
     rnd_hidden_dim: int
     rnd_learning_rate: float
@@ -1863,11 +1850,6 @@ def parse_args():
         type=int,
         default=1,
         help="How often to print per-step logs during training (in environment steps).",
-    )
-    parser.add_argument(
-        "--verbose-logs",
-        action="store_true",
-        help="Print extra per-step/per-event logs during training.",
     )
     parser.add_argument(
         "--perf-logging-enabled",
@@ -2894,17 +2876,6 @@ def build_config(args) -> TrainConfig:
     curriculum_states = _sanitize_curriculum_states(
         getattr(args, "curriculum_states", []) or [], config_dir
     )
-    # Allow --replay-video-output during training (not just watch-only) by mapping
-    # it onto the post-training video hooks.
-    if getattr(args, "replay_video_output", None) and not getattr(args, "watch_only", False):
-        setattr(args, "post_training_video_enabled", True)
-        setattr(args, "post_training_video_path", getattr(args, "replay_video_output"))
-        if getattr(args, "replay_video_seconds", None):
-            setattr(args, "post_training_video_seconds", getattr(args, "replay_video_seconds"))
-        if getattr(args, "replay_video_fps", None):
-            setattr(args, "post_training_video_fps", getattr(args, "replay_video_fps"))
-        if getattr(args, "replay_video_checkpoint", None):
-            setattr(args, "post_training_video_checkpoint", getattr(args, "replay_video_checkpoint"))
     aggregate_layout_path = getattr(args, "aggregate_layout_path", None)
     if aggregate_layout_path:
         if config_dir and not os.path.isabs(aggregate_layout_path):
@@ -2921,10 +2892,8 @@ def build_config(args) -> TrainConfig:
         setattr(args, "aggregate_background_path", aggregate_background_path)
     post_training_video_path = getattr(args, "post_training_video_path", None)
     if post_training_video_path:
-        if not os.path.isabs(post_training_video_path):
-            post_training_video_path = os.path.normpath(
-                os.path.join(os.getcwd(), post_training_video_path)
-            )
+        if config_dir and not os.path.isabs(post_training_video_path):
+            post_training_video_path = os.path.normpath(os.path.join(config_dir, post_training_video_path))
         else:
             post_training_video_path = os.path.normpath(post_training_video_path)
         setattr(args, "post_training_video_path", post_training_video_path)
@@ -2999,32 +2968,6 @@ def build_config(args) -> TrainConfig:
     rnd_scale = float(getattr(args, "rnd_scale", 0.0))
     posterior_rnd_enabled = bool(getattr(args, "posterior_rnd_enabled", False))
     posterior_rnd_event = str(getattr(args, "posterior_rnd_event", "") or "").strip()
-    posterior_rnd_events_raw = getattr(args, "posterior_rnd_events", None)
-    posterior_rnd_events = None
-    if isinstance(posterior_rnd_events_raw, list) and posterior_rnd_events_raw:
-        events_list = []
-        for entry in posterior_rnd_events_raw:
-            if isinstance(entry, dict):
-                name = str(entry.get("name") or entry.get("event") or "").strip()
-                if not name:
-                    continue
-                try:
-                    weight = float(entry.get("weight", 1.0))
-                except (TypeError, ValueError):
-                    weight = 1.0
-                if not math.isfinite(weight):
-                    weight = 0.0
-                if weight < 0.0:
-                    weight = abs(weight)
-                events_list.append({"name": name, "weight": weight})
-            elif isinstance(entry, str):
-                stripped = entry.strip()
-                if stripped:
-                    events_list.append({"name": stripped, "weight": 1.0})
-        if events_list:
-            posterior_rnd_events = events_list
-    if posterior_rnd_events is None and posterior_rnd_event:
-        posterior_rnd_events = [{"name": posterior_rnd_event, "weight": 1.0}]
     posterior_rnd_bounds = _coerce_float_bounds(
         getattr(args, "posterior_rnd_bounds", (0.4, 0.9)),
         (0.4, 0.9),
@@ -3149,7 +3092,6 @@ def build_config(args) -> TrainConfig:
         rnd_scale=rnd_scale,
         posterior_rnd_enabled=posterior_rnd_enabled,
         posterior_rnd_event=posterior_rnd_event,
-        posterior_rnd_events=posterior_rnd_events,
         posterior_rnd_bounds=posterior_rnd_bounds,
         rnd_hidden_dim=rnd_hidden_dim,
         rnd_learning_rate=rnd_learning_rate,
@@ -3324,12 +3266,8 @@ def _maybe_record_post_training_video(cfg: TrainConfig) -> None:
     if not checkpoint:
         print("[video] Skipping post-training replay video because no checkpoint is available.")
         return
-    output_path = cfg.post_training_video_path
-    if output_path:
-        if not os.path.isabs(output_path):
-            output_path = os.path.normpath(os.path.join(os.getcwd(), output_path))
-    else:
-        output_path = os.path.normpath(os.path.join(cfg.save_dir, "best_playthrough.mp4"))
+    output_path = cfg.post_training_video_path or "best_playthrough.mp4"
+    output_path = _resolve_path_like(output_path, cfg.save_dir)
     recorder = VideoRecorder(
         output_path,
         fps=cfg.post_training_video_fps,
@@ -3819,7 +3757,6 @@ def run_replay(
                                 terminal=done_flag,
                                 update_aggregate=update_agg,
                             )
-                    frame_for_video = None
                     if gameplay_viz:
                         raw_frame = next_info.get("raw_frame")
                         frame = raw_frame if isinstance(raw_frame, np.ndarray) else next_obs
@@ -3830,15 +3767,10 @@ def run_replay(
                             reward=reward,
                             terminal=done_flag,
                         )
-                        if idx == 0:
-                            frame_for_video = frame
-                    elif video_recorder and idx == 0:
-                        raw_frame = next_info.get("raw_frame")
-                        frame_for_video = raw_frame if isinstance(raw_frame, np.ndarray) else next_obs
-                    if video_recorder and frame_for_video is not None:
-                        video_recorder.add_frame(frame_for_video)
-                        if video_recorder.done:
-                            video_complete = True
+                        if video_recorder and idx == 0:
+                            video_recorder.add_frame(frame)
+                            if video_recorder.done:
+                                video_complete = True
                     if total_steps >= max_steps:
                         break
                     if video_complete:
@@ -3917,7 +3849,6 @@ def train(cfg: TrainConfig) -> None:
     prev_caught_totals = [0 for _ in range(num_envs)]
     prev_defeated_totals = [0 for _ in range(num_envs)]
     progress_payload = None
-    video_complete = False
 
     probe_obs, probe_info = envs[0].reset(seed=cfg.seed)
     obs_shape = (probe_obs.shape[2], probe_obs.shape[0], probe_obs.shape[1]) if probe_obs.ndim == 3 else probe_obs.shape
@@ -4168,58 +4099,24 @@ def train(cfg: TrainConfig) -> None:
         events = payload.get("events") or payload.get("progress_events") or []
         if not events:
             return
-
-        def _lookup_event(name: str) -> dict | None:
-            target = name.strip().lower()
-            if not target:
-                return None
+        target = None
+        target_name = (cfg.posterior_rnd_event or "").strip().lower()
+        if target_name:
             for event in events:
-                if str(event.get("name") or "").strip().lower() == target:
-                    return event
-            return None
-
-        def _event_mean(event: dict | None) -> float:
-            if not event:
-                return 0.0
-            value = event.get("posterior_mean")
-            if value is None:
-                value = event.get("mean")
-            try:
-                mean_val = float(value or 0.0)
-            except (TypeError, ValueError):
-                mean_val = 0.0
-            return max(0.0, min(1.0, mean_val))
-
-        aggregate_mean = None
-        if cfg.posterior_rnd_events:
-            weighted_total = 0.0
-            weight_sum = 0.0
-            for spec in cfg.posterior_rnd_events:
-                name = str(spec.get("name") or "").strip()
-                if not name:
-                    continue
-                event = _lookup_event(name)
-                if event is None:
-                    continue
-                weight = float(spec.get("weight", 1.0))
-                if weight <= 0.0 or not math.isfinite(weight):
-                    continue
-                weighted_total += weight * _event_mean(event)
-                weight_sum += weight
-            if weight_sum > 0.0:
-                aggregate_mean = weighted_total / weight_sum
-
-        if aggregate_mean is None:
-            target_name = (cfg.posterior_rnd_event or "").strip().lower()
-            event = _lookup_event(target_name) if target_name else None
-            if event is None:
-                event = events[0]
-            aggregate_mean = _event_mean(event)
-
+                if str(event.get("name") or "").strip().lower() == target_name:
+                    target = event
+                    break
+        if target is None:
+            target = events[0]
+        try:
+            mean = float(target.get("posterior_mean") or 0.0)
+        except (TypeError, ValueError):
+            mean = 0.0
+        mean = max(0.0, min(1.0, mean))
         lo, hi = cfg.posterior_rnd_bounds
         if hi < lo:
             lo, hi = hi, lo
-        dynamic_rnd_scale = lo + (hi - lo) * (1.0 - aggregate_mean)
+        dynamic_rnd_scale = lo + (hi - lo) * (1.0 - mean)
 
     def flush_nstep(idx: int, force: bool = False) -> None:
         queue = nstep_buffers[idx]
@@ -4793,10 +4690,7 @@ def train(cfg: TrainConfig) -> None:
                                 terminal=done_flag,
                             )
                     if best_recorder:
-                        if isinstance(raw_frame, np.ndarray):
-                            frame_to_record = raw_frame
-                        else:
-                            frame_to_record = next_obs
+                        frame_to_record = raw_frame if isinstance(raw_frame, np.ndarray) else None
                         best_recorder.record_step(idx, env_steps[idx], next_info, reward, frame_to_record)
                     if done_flag and progress_tracker:
                         result = progress_tracker.finish_episode(idx)
@@ -4904,7 +4798,6 @@ def train(cfg: TrainConfig) -> None:
             quest_hits_serial = _format_event_counts(quest_counts, pair_sep=";")
             coverage_tiles_serial = _format_coverage_tiles(coverage_stats)
             coverage_towns_serial = _format_coverage_towns(coverage_stats)
-            coverage_pct_serial = _format_coverage_percentages(coverage_unique_tiles)
             if summary_log_path:
                 reward_list_serial = ";".join(f"{r:.6f}" for r in episode_rewards)
                 env_steps_serial = ";".join(str(s) for s in env_steps)
@@ -4915,12 +4808,11 @@ def train(cfg: TrainConfig) -> None:
                 curriculum_serial = ";".join(curriculum_assignments)
                 _append_csv(
                     summary_log_path,
-                    "wall_time,episode,mean_reward,rewards,total_env_steps,global_step,epsilon,loss,num_envs,map_names,env_steps,curriculum_states,quest_hits,coverage_tiles,coverage_towns,coverage_pct",
+                    "wall_time,episode,mean_reward,rewards,total_env_steps,global_step,epsilon,loss,num_envs,map_names,env_steps,curriculum_states,quest_hits,coverage_tiles,coverage_towns",
                     f"{time.time():.3f},{episode + 1},{mean_reward:.6f},{reward_list_serial},"
                     f"{sum(env_steps)},{global_step},{epsilon:.6f},{loss_val:.6f},{num_envs},"
                     f"{map_names_serial},{env_steps_serial},{curriculum_serial},"
-                    f"{quest_hits_serial or 'none'},{coverage_tiles_serial or 'na'},{coverage_towns_serial or 'none'},"
-                    f"{coverage_pct_serial or 'na'}",
+                    f"{quest_hits_serial or 'none'},{coverage_tiles_serial or 'na'},{coverage_towns_serial or 'none'}",
                 )
             rewards_str = ", ".join(f"{r:8.2f}" for r in episode_rewards)
             summary_due = cfg.verbose_logs or ((episode + 1) % cfg.progress_interval == 0) or (episode == 0) or (episode + 1 == cfg.episodes)

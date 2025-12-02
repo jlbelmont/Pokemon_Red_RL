@@ -6,9 +6,9 @@
         "pokemon_red.gb"
     ],
     "_comment_episodes": "Number of full training episodes to run.",
-    "episodes": 5,
+    "episodes": 20,
     "_comment_max_steps": "Max emulator steps allowed per episode before forcing a reset.",
-    "max_steps": 5000,
+    "max_steps": 6000,
     "_comment_buffer_size": "Replay buffer capacity for storing past transitions.",
     "buffer_size": 10000000,
     "_comment_batch_size": "Mini-batch size sampled from the replay buffer each update.",
@@ -104,7 +104,7 @@
     "_comment_aggregate_layout_path": "JSON layout describing map-id placement on the full Kanto background (relative to this config).",
     "aggregate_layout_path": "../assets/kanto_map_layout.json",
     "_comment_aggregate_background_path": "Optional PNG background layered beneath the aggregate heatmap.",
-    "aggregate_background_path": null,
+    "aggregate_background_path": "../assets/kanto_background.png",
     "_comment_aggregate_tile_scale": "Pixel size per tile when upsampling the aggregate heatmap.",
     "aggregate_tile_scale": 16,
     "_comment_aggregate_pad_tiles": "Tile padding baked into the aggregate layout to keep towns centered.",
@@ -134,16 +134,16 @@
     "_comment_best_frame_limit": "Maximum number of sampled frames to keep for the best episode capture.",
     "best_frame_limit": 20000,
     "_comment_visit_counts": "Global/episodic visit-count novelty bonuses.",
-    "visit_count_enabled": true,
-    "visit_count_scale": 0.25,
+    "visit_count_enabled": false,
+    "visit_count_scale": 0.0,
     "visit_count_alpha": 1.0,
     "visit_count_beta": 0.1,
     "visit_count_epsilon": 1.0,
     "visit_count_bin_size": 4,
-    "visit_count_include_story": true,
+    "visit_count_include_story": false,
     "_comment_map_transition": "Bonus (scaled) for the first few crossings between map ids.",
-    "map_transition_scale": 0.8,
-    "map_transition_max_visits": 4,
+    "map_transition_scale": 0.0,
+    "map_transition_max_visits": 8,
     "_comment_rnd": "Random Network Distillation intrinsic reward knobs.",
     "rnd_enabled": true,
     "rnd_scale": 0.3,
@@ -361,61 +361,6 @@
             "address": "0xD867",
             "bit": 1,
             "reward": 5200.0
-        },
-        "mt_moon_fossil": {
-            "address": "0xD8B3",
-            "bit": 0,
-            "reward": 240.0
-        },
-        "exp_all": {
-            "address": "0xD8B3",
-            "bit": 1,
-            "reward": 300.0
-        },
-        "ss_ticket": {
-            "address": "0xD744",
-            "bit": 1,
-            "reward": 400.0
-        },
-        "bike_voucher": {
-            "address": "0xD744",
-            "bit": 2,
-            "reward": 350.0
-        },
-        "lift_key": {
-            "address": "0xD744",
-            "bit": 4,
-            "reward": 450.0
-        },
-        "card_key": {
-            "address": "0xD744",
-            "bit": 5,
-            "reward": 450.0
-        },
-        "poke_flute": {
-            "address": "0xD744",
-            "bit": 6,
-            "reward": 500.0
-        },
-        "secret_key": {
-            "address": "0xD744",
-            "bit": 7,
-            "reward": 450.0
-        },
-        "legendary_bird_moltres": {
-            "address": "0xD8BC",
-            "bit": 5,
-            "reward": 300.0
-        },
-        "legendary_bird_zapdos": {
-            "address": "0xD8BC",
-            "bit": 6,
-            "reward": 300.0
-        },
-        "legendary_bird_articuno": {
-            "address": "0xD8BC",
-            "bit": 7,
-            "reward": 300.0
         }
     },
     "_comment_champion_reward": "Reward for defeating the champion after the Elite Four.",
@@ -496,11 +441,6 @@
                     "reward": 520.0
                 },
                 {
-                    "label": "oak_lab_entry",
-                    "map_name": "oaks lab",
-                    "reward": 360.0
-                },
-                {
                     "label": "parcel_assignment",
                     "story_flag": "oak_parcel_assigned",
                     "reward": 820.0
@@ -509,11 +449,6 @@
                     "label": "parcel_delivery",
                     "story_flag": "oak_parcel_received",
                     "reward": 1250.0
-                },
-                {
-                    "label": "viridian_gate_north",
-                    "map_name": "route 2 gate",
-                    "reward": 280.0
                 }
             ]
         },
@@ -965,35 +900,6 @@
             "flag_key": "champion_flag",
             "step_limit": 2100000,
             "decision_threshold": 0.35
-        },
-        {
-            "name": "S.S. Ticket Acquired",
-            "type": "story_flag",
-            "flag_key": "ss_ticket",
-            "step_limit": 550000,
-            "decision_threshold": 0.55
-        },
-        {
-            "name": "Pok\u00e9 Flute Retrieved",
-            "type": "story_flag",
-            "flag_key": "poke_flute",
-            "step_limit": 800000,
-            "decision_threshold": 0.5
-        },
-        {
-            "name": "Secret Key Secured",
-            "type": "story_flag",
-            "flag_key": "secret_key",
-            "step_limit": 950000,
-            "decision_threshold": 0.45
-        },
-        {
-            "name": "Unique Towns 5",
-            "type": "counter",
-            "counter_key": "unique_towns_visited",
-            "count_threshold": 5,
-            "step_limit": 260000,
-            "decision_threshold": 0.6
         }
     ],
     "_comment_progress_metrics_path": "JSON file where Bayesian progress summaries are stored after training.",
@@ -1060,15 +966,15 @@
         10
     ],
     "_comment_pallet_penalty_interval": "Steps between Pallet Town stagnation penalty applications.",
-    "pallet_penalty_interval": 45,
+    "pallet_penalty_interval": 60,
     "_comment_pallet_penalty": "Penalty magnitude when staying in Pallet Town too long.",
-    "pallet_penalty": -40.0,
+    "pallet_penalty": -30.0,
     "_comment_pallet_penalty_escalate_mode": "Escalation mode for repeated Pallet penalties (none/linear/exponential/quadratic).",
     "pallet_penalty_escalate_mode": "linear",
     "_comment_pallet_penalty_escalate_rate": "Rate multiplier for the Pallet penalty escalation.",
-    "pallet_penalty_escalate_rate": 0.7,
+    "pallet_penalty_escalate_rate": 0.5,
     "_comment_pallet_penalty_max_penalty": "Optional clamp for the Pallet penalty escalation.",
-    "pallet_penalty_max_penalty": -90.0,
+    "pallet_penalty_max_penalty": -60.0,
     "_comment_map_stay_penalties": "Additional stay-penalty groups; each entry sets map_ids/map_id, interval, penalty, and an optional name.",
     "map_stay_penalties": [
         {
@@ -1080,22 +986,22 @@
                 "blues house",
                 "oaks lab"
             ],
-            "interval": 160,
-            "penalty": -10.0,
+            "interval": 240,
+            "penalty": -6.0,
             "escalate_mode": "linear",
-            "escalate_rate": 0.5,
-            "max_penalty": -70.0
+            "escalate_rate": 0.35,
+            "max_penalty": -42.0
         },
         {
             "name": "route1_loop",
             "map_names": [
                 "route 1"
             ],
-            "interval": 180,
-            "penalty": -7.0,
+            "interval": 260,
+            "penalty": -5.0,
             "escalate_mode": "linear",
-            "escalate_rate": 0.4,
-            "max_penalty": -60.0
+            "escalate_rate": 0.2,
+            "max_penalty": -35.0
         },
         {
             "name": "viridian_cluster",
@@ -1107,11 +1013,11 @@
                 "viridian nickname house",
                 "viridian gym"
             ],
-            "interval": 240,
-            "penalty": -9.0,
+            "interval": 320,
+            "penalty": -6.0,
             "escalate_mode": "linear",
-            "escalate_rate": 0.45,
-            "max_penalty": -65.0
+            "escalate_rate": 0.3,
+            "max_penalty": -50.0
         },
         {
             "name": "viridian_gate_stack",
@@ -1125,33 +1031,12 @@
             "penalty": -4.0
         },
         {
-            "name": "oak_lab_loop",
-            "map_names": [
-                "oaks lab",
-                "reds house 1f",
-                "reds house 2f"
-            ],
-            "interval": 180,
-            "penalty": -6.0
-        },
-        {
-            "name": "viridian_mart_counter",
-            "map_names": [
-                "viridian mart"
-            ],
-            "interval": 120,
-            "penalty": -8.0
-        },
-        {
             "name": "viridian_forest_cluster",
             "map_names": [
                 "viridian forest"
             ],
-            "interval": 300,
-            "penalty": -7.0,
-            "escalate_mode": "linear",
-            "escalate_rate": 0.3,
-            "max_penalty": -55.0
+            "interval": 420,
+            "penalty": -4.5
         },
         {
             "name": "pewter_cluster",
@@ -1167,79 +1052,6 @@
             ],
             "interval": 340,
             "penalty": -4.0
-        },
-        {
-            "name": "cerulean_cluster",
-            "map_names": [
-                "cerulean city",
-                "cerulean mart",
-                "cerulean pokecenter",
-                "cerulean gym",
-                "cerulean trade house",
-                "cerulean badge house"
-            ],
-            "interval": 260,
-            "penalty": -6.5,
-            "escalate_mode": "linear",
-            "escalate_rate": 0.35,
-            "max_penalty": -55.0
-        },
-        {
-            "name": "saffron_cluster",
-            "map_names": [
-                "saffron city",
-                "saffron pokecenter",
-                "saffron mart",
-                "saffron dojo",
-                "silph co 1f",
-                "silph co 2f",
-                "silph co 3f",
-                "silph co 4f",
-                "silph co 5f",
-                "silph co 6f",
-                "silph co 7f",
-                "silph co 8f",
-                "silph co 9f",
-                "silph co 10f",
-                "silph co 11f",
-                "saffron gym"
-            ],
-            "interval": 320,
-            "penalty": -8.0,
-            "escalate_mode": "linear",
-            "escalate_rate": 0.4,
-            "max_penalty": -70.0
-        },
-        {
-            "name": "lavender_cluster",
-            "map_names": [
-                "lavender town",
-                "pokemon tower 1f",
-                "pokemon tower 2f",
-                "pokemon tower 3f",
-                "pokemon tower 4f",
-                "pokemon tower 5f",
-                "pokemon tower 6f",
-                "pokemon tower 7f"
-            ],
-            "interval": 280,
-            "penalty": -5.5
-        },
-        {
-            "name": "fuchsia_cluster",
-            "map_names": [
-                "fuchsia city",
-                "fuchsia mart",
-                "fuchsia pokecenter",
-                "fuchsia gym",
-                "warden house",
-                "safari zone gate"
-            ],
-            "interval": 300,
-            "penalty": -6.0,
-            "escalate_mode": "linear",
-            "escalate_rate": 0.3,
-            "max_penalty": -60.0
         },
         {
             "name": "mt_moon_cluster",
