@@ -1,10 +1,18 @@
-numpy==1.26.4
-gymnasium==0.29.1
-pyboy==2.0.3
-matplotlib==3.8.4
-opencv-python-headless==4.9.0.80
-imageio==2.34.1
-typing-extensions>=4.8.0
-# Install torch separately per platform:
-#   Mac/MPS or CPU:    pip install torch==2.2.2
-#   GPU (CUDA 12.x):   pip install --index-url https://download.pytorch.org/whl/cu121 torch==2.2.2
+torch>=2.1
+numpy>=1.24
+omegaconf>=2.3
+matplotlib>=3.7
+pandas>=2.1
+imageio>=2.31
+einops>=0.7
+numba>=0.58
+mediapy>=1.1
+psutil>=5.9
+pyboy>=2.0
+opencv-python==3.4.17.63
+scikit-image>=0.21
+typer>=0.9
+tyro>=0.6
+wandb>=0.15
+websockets>=11.0
+pufferlib @ git+https://github.com/thatguy11325/PufferLib.git@1.0

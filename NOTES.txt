@@ -1,0 +1,49 @@
+Project overview:
+This repository implements hierarchical deep reinforcement learning for Pokémon Red using a CNN→GRU/LSTM/SSM Q-network with intrinsic Random Network Distillation, novelty bonuses, Bayesian milestone shaping, and a savestate curriculum. Training and analysis are contained entirely within this directory for reproducibility and grading.
+
+Directory brief:
+- mega_model/: core agent, networks, curriculum, intrinsic rewards, and optional streaming utilities.
+- env/: environment wrappers, Pokémon Red emulator bindings, and bundled ROM/savestates.
+- training/: entrypoints for large and slim model training plus shared utilities.
+- analysis/: scripts to regenerate reward, posterior, and visitation figures.
+- report/: LaTeX report and referenced figures under figs/final/.
+- configs/: YAML presets for the big and slim training runs.
+- scripts/: convenience shell launchers.
+- runs/: intended output location for logs, checkpoints, and curated demo videos.
+
+Environment setup:
+Use Python 3.11+ with system libraries for PyBoy and OpenCV available. Install dependencies from requirements.txt inside a fresh virtual environment.
+
+Dependency installation:
+python -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+
+Training commands:
+# large model preset
+python training/train_big.py --config configs/config_big.yaml
+# slim ablation
+python training/train_slim.py --config configs/config_slim.yaml
+
+Analysis and figures:
+Run from the repository root after training logs exist in runs/: 
+python analysis/final_analysis_rnd.py
+python analysis/final_analysis_rewards.py
+python analysis/final_map_visitation.py
+python analysis/metrics.py
+Outputs are written to report/figs/final/ and analysis/tables/.
+
+Report compilation:
+cd report
+pdflatex main.tex
+bibtex main
+pdflatex main.tex
+pdflatex main.tex
+Figures resolve from figs/final/.
+
+Runtime expectations and hardware:
+Training benefits from a CUDA-capable GPU with at least 12 GB of memory; CPU-only execution is possible but slow. The big preset runs for roughly 100k–500k steps in a few hours on a single modern GPU; the slim preset completes faster. Disk usage grows with logged events and checkpoints under runs/.
+
+Known limitations:
+Checkpoint resume assumes matching model shapes; mismatched recurrent dimensions will skip restore. Evaluation loops are placeholder only. Streaming is optional and requires pygame plus a reverse SSH tunnel if used. The bundled ROM and savestates must remain in env/assets/ for training to start successfully.

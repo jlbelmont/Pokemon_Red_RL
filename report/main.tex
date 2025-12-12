@@ -1,0 +1,339 @@
+\documentclass{article}
+\usepackage[final,nonatbib]{neurips_2024}
+\usepackage{graphicx}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{subcaption}
+
+\makeatletter
+\renewcommand{\@oddfoot}{}
+\renewcommand{\@evenfoot}{}
+\renewcommand{\footnoterule}{}
+\makeatother
+
+\title{Posterior-Guided Exploration in Pok\'emon Red:\\
+RND, Bayesian Signals, Curriculum Savestates, and SSM-based Hierarchies}
+\author{
+  Jack Belmont \\
+  Department of Computer Science \\
+  Washington University in St. Louis \\
+  \texttt{} \\
+  \And
+  Andrew Baggio \\
+  Department of Computer Science \\
+  Washington University in St. Louis \\
+  \texttt{}
+}
+\makeatletter
+\renewcommand{\@noticestring}{}
+\makeatother
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We study long-horizon exploration in Pok\'emon Red using a hierarchical CNN$\to$GRU/LSTM/SSM Q-network with intrinsic Random Network Distillation (RND), novelty bonuses, Bayesian milestone shaping, and a savestate curriculum biased toward farther maps. Over \textasciitilde1.25M logged steps in a main large run (big\_run\_03) plus a short slim ablation, we probe posterior dynamics, reward decomposition, and map visitation. The large model steadies RND/posteriors and modestly improves coverage, while very long episodes and sparse resets keep episode counts low. We formalize the problem as a structured POMDP, spell out the intrinsic/shaping signals actually implemented, and connect the observed histogram narrowing and limited coverage to uncertainty-driven exploration under tight compute.
+\end{abstract}
+
+\section{Introduction}\label{sec:intro}
+Long-horizon, sparse-reward exploration remains a central challenge in deep RL, especially in partially observable domains where progress depends on long chains of actions and implicit world knowledge. Pok\'emon Red epitomizes this difficulty: naive $\epsilon$-greedy DQN rapidly stalls because extrinsic feedback is rare and delayed. The state space is high-dimensional (RGB frames plus WRAM), and observation aliasing is severe. The game feels closer to an RPG + puzzle than a reactive arcade title. Agents must navigate multi-stage quests (Oak's parcel, badge ordering, HMs unlocking regions), backtrack across towns and routes, interact with NPCs and items, and reason about hidden story flags. Many objectives are non-local and non-Markovian from pixels; a large portion of the game state is latent and only indirectly revealed through WRAM bits or narrative progression. Simple curiosity often over-explores early routes and fails to chain quest steps, while deaths or softlocks bounce the agent to spawn, making long episodes (50k--75k steps) uninformative without additional structure.
+
+Large multimodal systems (e.g., Gemini-based agents reported to beat Pok\'emon Blue) rely on huge capacity, multimodal reasoning, and heavy scaffolding. Here we instead study a modest pixel+WRAM RL agent that combines hierarchical recurrence/SSMs with posterior-guided intrinsic rewards and a savestate curriculum. We maintain a running posterior belief over milestone completion to modulate curiosity: when the posterior suggests progress is likely, we dampen RND/novelty to avoid runaway exploration; when the posterior is low, we encourage broader state coverage. This mechanism aims to stabilize intrinsic rewards and align exploration with long-range goals under strict compute limits.
+
+\paragraph{Research questions and contributions.} RQ1: How does model capacity (large vs. slim) affect posterior stability and spatial coverage under posterior-guided intrinsic motivation? RQ2: How do intrinsic components (RND, novelty, Bayesian shaping) behave when extrinsic rewards are extremely sparse and episodes are very long? RQ3: How do compute constraints (single GPU, long episodes, SPS degradation) limit learning and evaluation quality? Contributions: (1) A formulation and implementation that couples CNN$\to$GRU/LSTM/SSM hierarchies with posterior-guided RND/novelty and a savestate curriculum for a console-scale POMDP. (2) An expanded framing of the intrinsic signals (RND, pseudo-count novelty, per-step milestone means with Beta monitors for logging) and their interaction with belief stability. (3) An empirical study across multiple runs (one fully logged) showing that larger models yield steadier posteriors and modestly better coverage under tight compute.
+
+\section{Related Work}\label{sec:related}
+\textbf{Pok\'emon Red RL.} Rubinstein's \texttt{pokemonred\_puffer} \cite{rubinstein} and PWhiddy's \texttt{PokemonRedExperiments} \cite{pwhiddy} define baseline wrappers, action/state spaces, and highlight exploration difficulty. Rubinstein's pokerl policies \cite{pokerl} explore very long horizons ($\sim$10M steps), far beyond our budget. Our PMRL repo \cite{pmrl} builds on similar environment settings but adds hierarchical recurrence, Bayesian shaping, and savestate curricula. \\
+\textbf{Intrinsic motivation.} RND \cite{burda2019rnd}, curiosity \cite{pathak2017curiosity}, and count-based variants address sparse rewards but can be unstable in very long horizons. \\
+\textbf{Curriculum learning.} Curriculum Learning \cite{bengio2009curriculum} motivates our savestate registry and biased sampling toward later maps/badges. \\
+\textbf{State-space models / SSMs.} Selective State Spaces (Mamba) \cite{dao2023mamba} and S4/SSM literature \cite{gu2021s4} show scalable sequence modeling; our GRU/LSTM/SSM stack is a pragmatic variant for long-range dependencies in RL. \\
+\textbf{Hard exploration and recurrent/world-model RL.} Go-Explore \cite{goexplore} uses archives for hard exploration; our savestate curriculum is a simpler return-to-state mechanism without full cell archives or robustification. R2D2 \cite{r2d2} employs recurrent replay at scale; our GRU/LSTM/SSM backbone similarly targets long-horizon credit assignment but in a single-process, modest-compute regime. Dreamer \cite{dreamer} uses latent world models; we remain model-free with intrinsic shaping due to compute and complexity constraints. These methods emphasize replay, archives, or learned dynamics to cope with long horizons; we probe how far posterior-guided intrinsic rewards, SSM hierarchy, and savestate curricula can push a pixel+WRAM agent under modest compute. \\
+\textbf{Cognitive framing.} Kahneman's dual-process view \cite{kahneman2011thinking} loosely motivates fast exploratory intrinsic signals vs. slower consolidation via curricula and checkpoints. \\
+\textbf{State-of-the-art and limitations.} DQN \cite{mnih2015dqn}, Rainbow \cite{hessel2018rainbow}, and count-based exploration \cite{bellemare2016pc} improve value-based RL but struggle with extreme sparsity and long horizons. Intrinsic methods (RND/curiosity) help but can be unstable; curricula address reset bias but are rarely posterior-guided in console-scale games. In Pok\'emon Red, common failures include stalling near spawn, failing to reach late-game quests, and volatile intrinsic signals when RND dominates. State-of-the-art intrinsic pipelines rarely pair prediction-error bonuses with an explicit posterior over progress; by logging and shaping with \texttt{posterior\_mean}, we aim to temper RND volatility while still pushing exploration. We address these gaps with a hierarchical architecture, posterior-guided RND/Bayesian shaping, and a savestate curriculum biased toward later maps, directly targeting exploration stability and reach. Large-model solutions (e.g., Gemini agents for Pok\'emon Blue \cite{gemini}) rely on huge capacity and scaffolding; our study focuses on a much smaller agent and explicit analysis of posterior-guided signals, closer in spirit to Bayesian/uncertainty-driven exploration in bandits and RL than to multimodal planning systems.
+
+\section{Problem Formulation}\label{sec:problem}
+We model the game as a POMDP $(\mathcal{S}, \mathcal{A}, \mathcal{O}, T, R, \gamma)$, where $s_t\in\mathcal{S}$ is the latent state, $o_t\in\mathcal{O}$ is the observation (RGB frame plus WRAM features), and $a_t\in\mathcal{A}$ is a discrete emulator action. The transition kernel $p(s_{t+1}\mid s_t,a_t)$ and observation model $p(o_t\mid s_t)$ are unknown and partially observed; the agent maintains an implicit belief $b_t$ via recurrence. The objective is
+\[
+\max_\pi \mathbb{E}\Big[\sum_{t=0}^\infty \gamma^t r_t\Big], \quad r_t = r_{\text{env},t} + \alpha\, r_{\text{rnd},t} + \beta\, r_{\text{novel},t} + \eta\, r_{\text{bayes},t},
+\]
+with weights $\alpha=0.1$, $\beta=0.05$, $\eta=0.05$. Q-learning with intrinsic rewards seeks to approximate $Q(s_t,a_t)=\mathbb{E}[r_t+\gamma \max_{a}Q(s_{t+1},a)]$, where $r_t$ is the shaped reward above. Belief is approximated by recurrence; a coarse posterior over milestones uses a Beta-Bernoulli statistic
+\[
+\mu_t = \frac{1}{K}\sum_{k=1}^K m_{t,k},
+\]
+where $m_{t,k}\in\{0,1\}$ are milestone flags decoded from WRAM at time $t$ (first 16 event bits; $K$ denotes the milestone count). This per-step mean drives shaping and RND scaling; there is no temporal smoothing. In parallel, an offline Beta monitor keeps per-milestone posteriors $(\alpha,\beta)$ updated at episode end for logging. Observations $o_t$ comprise native 160$\times$144 RGB (downsampled for training) and WRAM flags; many latent variables make $p(o_t\mid s_t)$ highly aliased. A milestone function $m(s)$ encodes badges, map IDs, and key quest flags to drive shaping. Key milestones span hundreds to thousands of steps, with non-local dependencies (story flags, items, multi-town backtracking), making the effective state space large and the POMDP highly structured and non-Markovian from pixels + WRAM alone. Episodes end on death or an optional step cap (50k used in logged runs).
+
+Large-model solutions contrast. Recent multimodal agents (e.g., Gemini-based Blue solvers \cite{gemini}) rely on huge model capacity, multimodal reasoning, and heavy compute; Rubinstein's pokerl policies \cite{pokerl} reach deep game states with $\sim$10M-step horizons. Here we study a smaller pixel+WRAM agent under modest compute, focusing on how posterior-guided RND + curriculum behave rather than on beating the full game.
+
+\section{Method}\label{sec:method}
+\subsection{Architecture and Data Flow}
+Visual observations (stack of 4 downsampled frames, $80{\times}72$) pass through three convolutional layers with ReLU: conv1 (channels 64 large / 16 slim, kernel 8, stride 4), conv2 (128 / 32, kernel 4, stride 2), conv3 (256 / 64, kernel 3, stride 1). This was taken as inspiration from Rubinstein's novel model as a front end. A small structured WRAM encoder embeds events + scalars (embed 64 + 8 scalars) into 128 dims (512 for large). The encoder output feeds GRU (512 large / 128 slim), LSTM (512/128), and a lightweight diagonal SSM (512/128) with layer norm; dropout 0.1 is applied before the recurrent stack. The SSM was taken in conjunction with Rubinstein's GRU/LSTM model to help with dynamic memory, which ideally functions as a further extension for a more lightweight architecture with faster horizon sequencing. A linear Q-head consumes the concatenated GRU/LSTM/SSM states. RND consumes the SSM output and uses a 3-layer MLP predictor/target (256 hidden) on the same feature dim; only the predictor is trained. Layer norm exists in the SSM and structured encoder; no other normalization or gating blocks are used.
+\begin{table}[t]
+    \centering
+    \small
+    \begin{tabular}{lcc}
+    \toprule
+    Component & Large & Slim \\
+    \midrule
+    Conv channels & 64/128/256 & 16/32/64 \\
+    GRU/LSTM/SSM hidden & 512 & 128 \\
+    RND MLP (predictor) & 256/256 & 256/256 \\
+    \bottomrule
+    \end{tabular}
+    \caption{Architectural presets for large vs. slim models.}
+    \label{tab:arch}
+\end{table}
+\subsection{Agent and Intrinsic Signals}
+Exploration uses $\epsilon$-greedy ($\epsilon_{\text{start}}=1.0$, $\epsilon_{\min}=0.05$, linear decay over total steps). Replay buffer holds 500k transitions; target network updates every 4000 steps; batch 128; frame stack 4. Intrinsic rewards comprise: (i) RND prediction error on the SSM features, with a fixed 3-layer target MLP and trained predictor, MSE normalized by running stats; (ii) novelty $r_{\text{novel},t} = 1/\sqrt{N(s_t)}$ using counts over milestone-flag tuples per env; (iii) Bayesian shaping $r_{\text{bayes},t} = \eta\,\mu_t$ with $\mu_t$ the per-step mean of binary milestone flags (no temporal smoothing) and $\eta=0.05$. The same $\mu_t$ scales RND (factor $1+\mu_t$) so confident milestones damp runaway curiosity. A separate per-episode Beta monitor (one posterior per milestone) is updated for logging but does not feed into the online shaping. Extrinsic reward $r_{\text{env}}$ is sparse; $r_{\text{total}} = r_{\text{env}} + 0.1\,r_{\text{rnd}} + 0.05\,r_{\text{novel}} + 0.05\,r_{\text{bayes}}$.
+\subsection{Curriculum via Savestates}
+A savestate registry checkpoints emulator state on map transitions and optional fixed map intervals. We used 1 state from Rubinstein's GitHub in order to preserve replayability, but it was in the starting room, so it was beneficial for reproducibility. Saved states are tagged (e.g., map\_XYZ, badge\_K) and assigned tiers (early/mid/late); sampling first chooses a tier with weights (early 0.5, mid 0.3, late 0.2) and then boosts farther maps/badges to bias away from spawn. However, this feature functions more as a future use case given that no badges were achieved in this compute time. Stochastic save-state registry were facilitate the later inclusion of swarming and potential parallel compute opportunities if the opportunity of more compute arises. Thus, it exists as a proof-of-concept for longer horizons that also functions for the shorter horizons and map-matching. However, adding interim milestone curriculum save conditions would benefit smaller compute on the M1 Pro chip. Registry scores are updated by recent episode returns from that state; softlocks are implicitly filtered because failed states stop contributing. Videos are rendered at native 160$\times$144; training uses downsampled frames.
+\subsection{Data Pipeline for Analysis}
+During training, step-level rewards, intrinsic signals, map IDs, and milestone flags are logged; episode-level returns are recorded when episodes terminate. Analysis scripts ingest these time series to produce posterior trends, reward decompositions, coverage metrics, and ablation summaries. Early/mid/late windows correspond to equal thirds of training steps; histograms are built per window and normalized per-step; smoothing uses exponential moving averages over step counts. SPS is derived from timestamps; coverage proxies use unique map IDs; milestone diversity counts distinct flag patterns. This flow—from environment to CNN/recurrent/SSM stack, to Q-values and intrinsic heads, to replay and logs—underpins all figures and tables in the Results. To our knowledge, no prior work on Pok\'emon Red combines hierarchical SSMs, posterior-shaped intrinsic signals, and savestate curricula to study posterior-guided exploration experimentally. 
+\begin{figure}[t]
+    \centering
+    \begin{minipage}{0.95\linewidth}
+    \small
+    \textbf{Algorithm 1: Posterior-Guided RND Q-learning with Savestate Curriculum}\\
+    \begin{enumerate}
+        \item Initialize networks, replay buffer, posterior $m_0$, savestate registry.
+        \item For each episode: sample start either from reset or curriculum-weighted savestate.
+        \item Collect transitions $(o_t,a_t,r_t,o_{t+1})$; compute $r_{\text{rnd}}, r_{\text{novel}}, r_{\text{bayes}}$, update posterior $m_t$.
+        \item Store in replay; periodically update Q-network with mixed extrinsic/intrinsic rewards; update target every 4000 steps.
+        \item Refresh savestate registry on map/badge changes; log metrics (posterior\_mean, rnd\_raw, rewards, coverage).
+    \end{enumerate}
+    \end{minipage}
+    \caption{Pseudocode overview of training with posterior-guided intrinsic rewards and savestate curriculum.}
+    \label{alg:training}
+\end{figure}
+
+\paragraph{Our Approach in a Nutshell}
+POMDP and partial observability $\to$ hierarchical CNN + GRU/LSTM/SSM backbone enables our relatively lighter-weight model architecture to function in a complex environment as such. Sparse extrinsic reward $\to$ RND ($r_{\text{rnd}}$), novelty ($r_{\text{novel}}$), and posterior-guided $r_{\text{bayes}}$ shaped by \texttt{posterior\_mean} develops our model's training. Different from our super-sparse reward conditions, where we only had map coverage and the champion flag, we now include the relative intermediate steps to facilitate and reinforce the chain-of-thought-like nature of the model to follow far-out horizons. Reset bias and short horizons $\to$ savestate curriculum biased toward higher map IDs/badges give us the ability to avoid pigeonholing model behavior and softlocks in a complex environment where we do not need higher-order supervision. Volatile curiosity $\to$ use of posterior to modulate RND/novelty strength is our novel addition to perturbing a newer reward function. This is sound (built on established DRL components) and novel in this Pok\'emon Red setting because no prior work combines hierarchical SSMs, posterior-shaped intrinsic signals, and savestate curricula to study posterior-guided exploration experimentally, yet our proof-of-concept lacks the same robust hardware setup as prior literature. 
+
+\section{Experimental Design}\label{sec:expdesign}
+\textbf{Runs.} We evaluate big\_run\_03 (baseline large), big\_run\_02/01 (partial large runs without events), and slim (reduced capacity smoke test). big\_run\_03 was launched with defaults in \texttt{train\_big.py} (2 envs, target 5M steps, eps decay to 0.5) and stopped with logs spanning global steps 400k--1.61M (\textasciitilde1.25M rows in events.csv); episodes in env0 terminate at 50k steps. Evaluation focuses on posterior dynamics, reward decomposition, coverage, and qualitative capacity comparison. \\
+\textbf{Data scale.} big\_run\_03 logs \textasciitilde1.25M transitions with 5 long episodes of 50k steps in env0; positions.csv contains \textasciitilde610k samples. big\_run\_02/01 have checkpoints and positions but no usable events logs; slim is a short smoke run (\textasciitilde4k steps, 68 one-step episodes). Episode sparsity pushes analysis toward step-level trends. \\
+\textbf{Ablations.} Large vs. slim capacity; partial earlier large runs without full logs; no explicit no-RND run (limitation). Using sparser rewards (champion flag only and map coverage without RND posterior influence vs. its inclusion) also contributed to our A-B testing. \\
+\textbf{Metrics.} Episode returns, per-component rewards, coverage proxies (unique map IDs), milestone-pattern diversity (distinct milestone flags), map dwell (when available), and throughput (steps/second). Evaluation relies on these to assess exploration quality and posterior-guided behavior. Our evaluation focuses on: (i) posterior stability vs. volatility across capacity; (ii) balance and stabilization of reward components; (iii) coverage/milestone diversity as exploration effectiveness; (iv) throughput constraints as a practical limiter. Evaluation questions: RQ1: Does posterior-guided shaping stabilize RND and improve coverage versus a slim agent? RQ2: How do intrinsic components behave when extrinsic rewards are nearly absent? RQ3: How do compute constraints (episode length, SPS) limit training and ablation breadth?
+\textbf{Hyperparameters and tuning.} Intrinsic weights $(\alpha,\beta,\eta)=(0.1,0.05,0.05)$ follow the training defaults; Adam with learning rate $3\times10^{-4}$ for the policy, $1\times10^{-4}$ for RND, $\gamma=0.99$, gradient clipping at 5.0, target updates every 4000 steps, training every 4 steps after 10k warmup, replay buffer 500k, batch 128. $\epsilon$ decays linearly from 1.0 to 0.05 over total steps. \textbf{Implementation and logging.} Runs use a single consumer GPU; wall-clock time per large run is several hours to days. Statistics are logged each environment step and summarized at fixed intervals; analysis scripts reuse these logs. \textbf{Baselines/ablations.} Large vs. slim reflect capacity ablations; absence of a no-RND baseline is a known limitation and is flagged in the evaluation design.
+
+\begin{table}[t]
+    \centering
+    \small
+    \begin{tabular}{lcccc}
+        \toprule
+        Run & Steps (approx) & Episodes (approx) & Coverage (unique maps) & Mean total reward \\
+        \midrule
+        big\_run\_03 & 1.25M & 5 (50k caps) & 3 (+unk) & intrinsic-dominated, mixed sign \\
+        big\_run\_02 & n/a (no events) & n/a & n/a & n/a \\
+        big\_run\_01 & n/a (no events) & n/a & n/a & n/a \\
+        slim         & 4k & many 1-step & 1 & intrinsic-dominated, noisy \\
+        \bottomrule
+    \end{tabular}
+    \caption{Run-level summary. Only big\_run\_03 has complete logs; earlier runs have checkpoints but missing events. Coverage is very low (three identified maps plus an unknown bucket) despite long horizons.}
+    \label{tab:runs}
+\end{table}
+
+\begin{table}[t]
+    \centering
+    \small
+    \begin{tabular}{lccc}
+        \toprule
+        Run & Coverage proxy & Milestone diversity & RND stability (qualitative) \\
+        \midrule
+        big\_run\_03 & 3 known maps (+unk) & very low & Moderate variance, stabilizing late \\
+        big\_run\_02 & n/a (no logs) & n/a & n/a \\
+        big\_run\_01 & n/a (no logs) & n/a & n/a \\
+        slim         & 1 map (spawn) & none & Noisiest (heavy tails) \\
+        \bottomrule
+    \end{tabular}
+    \caption{Qualitative comparison across runs. Only big\_run\_03 has usable signals beyond spawn; slim is a short smoke test stuck near spawn.}
+    \label{tab:ablations}
+\end{table}
+
+\textbf{Why these data matter.} Table~\ref{tab:runs} shows that step-level logs are abundant while episode-level statistics are sparse, motivating reliance on time-series and distributional views. Table~\ref{tab:ablations} highlights coverage and diversity gaps between large and slim models, explaining qualitative differences in the figures and underscoring the effect of capacity on exploration. Together, these tables define the evidence base used in the subsequent experimental evaluation. Moreover, they yield that further A-B model size testing is necessary to continue this project under a more detailed lense. Thus, the data is wholly insufficient but a step in the right direction. 
+
+\section{Results}\label{sec:results}
+Across runs, posterior\_mean stabilizes more in big\_run\_03 than slim; intrinsic rewards dominate but smooth over time; coverage remains low (3 known maps for big\_run\_03, 1 for slim) but the large model at least leaves spawn. Posterior variance in big\_run\_03 shrinks over training and RND magnitudes drop as the predictor learns; slim shows little change. These observations suggest that capacity and posterior shaping help steady intrinsic signals under sparse rewards, though the agent still loops near early towns and coverage plateaus quickly. Posterior mean stabilization is not conducive to learning, it may also represent failures to correctly achieve the milestone it initially ran for. 
+
+\begin{table}[t]
+    \centering
+    \small
+    \begin{tabular}{lccc}
+    \toprule
+    Run & Mean posterior\_mean & Mean $|r_{\text{rnd}}|$ & Coverage (unique maps) \\
+    \midrule
+    big\_run\_03 & moderate, stabilizing & decays over time & 3 (+unk) \\
+    big\_run\_02 & n/a & n/a & n/a \\
+    big\_run\_01 & n/a & n/a & n/a \\
+    slim         & flat, noisy          & high variance    & 1 \\
+    \bottomrule
+    \end{tabular}
+    \caption{Summary statistics by run: posterior stability, RND magnitude, and coverage from available logs.}
+    \label{tab:stats}
+\end{table}
+
+\subsection{RND / Posterior Trends}
+posterior\_mean\_over\_time and r\_rnd/r\_bayes/r\_total curves show gradual stabilization in large runs; slim exhibits noisier, heavier-tailed novelty distributions. Early/mid/late histograms narrow over training; slim retains broader tails. Figure~\ref{fig:rnd_curves} shows time-series curves for big\_run\_03; Figure~\ref{fig:rnd_hists} overlays early/mid/late histograms (big\_run\_03) and highlights heavier tails in slim (not shown for brevity). The qualitative stability in big\_run\_03 aligns with its (still small) coverage advantage in Table~\ref{tab:ablations}, suggesting capacity and posterior-guided signals help steady exploration. Posterior variance and median $|r_{\text{rnd}}|$ decline over training for big\_run\_03, while slim stays noisy. The oscillations mirror partial observability and long dwell on early maps, while large-model stabilization indicates better belief tracking in spite of sparse extrinsic feedback. \textbf{Takeaway:} larger capacity stabilizes posterior-guided intrinsic signals and supports broader exploration, whereas slim capacity amplifies bottlenecks from aliasing and curriculum bias. However, there are other signals needed to be tested. The stabilization fails to consistently reach all milestones in the short training session. 
+\begin{figure}[t]
+    \centering
+\begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figs/final/big_run_03_posterior_mean_over_time.png}
+        \caption{\small Posterior mean over time (big\_run\_03).}
+    \end{subfigure}
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figs/final/big_run_03_r_rnd_over_time.png}
+        \caption{\small RND reward over time (big\_run\_03).}
+    \end{subfigure}\\[6pt]
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figs/final/big_run_03_r_bayes_over_time.png}
+        \caption{\small Bayes shaping over time (big\_run\_03).}
+    \end{subfigure}
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figs/final/big_run_03_r_total_over_time.png}
+        \caption{\small Total reward over time (big\_run\_03).}
+    \end{subfigure}
+    \caption{\small RND/posterior time-series for the baseline large run. Curves slowly stabilize; intrinsic signals dominate because extrinsic rewards are sparse.}
+    \label{fig:rnd_curves}
+\smallskip
+\noindent\textit{Interpretation:} Posterior means rise as RND error decays, indicating novelty is being converted into semantic progress; residual oscillations align with partial observability and long dwell periods. The large model’s smoother decay suggests better capacity to resolve epistemic uncertainty into stable beliefs under sparse extrinsic signals. It is rather small and relatively insignificant, but the trend is not conducive to the agent's learning. Thus, more training, as aforementioned, is necessary for further analysis to conclude its efficacy. 
+\end{figure}
+\begin{figure}[t]
+    \centering
+    \begin{subfigure}{0.32\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figs/final/big_run_03_r_rnd_hist_early_mid_late.png}
+        \caption{\small RND reward histograms (early/mid/late).}
+    \end{subfigure}
+    \begin{subfigure}{0.32\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figs/final/big_run_03_posterior_mean_hist_early_mid_late.png}
+        \caption{\small Posterior mean histograms.}
+    \end{subfigure}
+    \begin{subfigure}{0.32\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figs/final/big_run_03_rnd_raw_hist_early_mid_late.png}
+        \caption{\small RND raw error histograms.}
+    \end{subfigure}
+    \caption{\small Distributional views of RND and posterior signals across training phases (big\_run\_03).}
+    \label{fig:rnd_hists}
+\smallskip
+\noindent\textit{Interpretation:} Histogram narrowing in RND error and posterior means indicates reduced epistemic uncertainty and tighter semantic beliefs; heavier tails early on reflect exploratory spikes and partial observability. Slim runs (not shown) retain heavier tails, mirroring capacity limits and weaker conversion of novelty into progress.
+\end{figure}
+
+\subsection{Reward Decomposition}
+Smoothed r\_env, r\_rnd, r\_novel, r\_bayes, r\_total reveal intrinsic dominance; extrinsic r\_env is sparse. Few episodes (e.g., 5 in big\_run\_03) reflect 50k caps; per-step smoothing captures intrinsic dynamics. Figure~\ref{fig:rewards} shows episode-level returns and smoothed components for big\_run\_03. The imbalance between \textasciitilde1.25M steps and only a handful of episodes (Table~\ref{tab:runs}) explains why episode-level statistics are noisy and why step-level aggregation is emphasized. RND magnitudes decline over training as the predictor learns. Intrinsic terms are typically orders of magnitude larger than extrinsic rewards per-step, with the first extrinsic hits often arriving after tens of thousands of steps. Limited coverage and dwell oscillations stem from partial observability and curriculum bias toward early maps, further skewing reward composition. \textbf{Takeaway:} intrinsic rewards dominate the learning signal and stabilize over time even when extrinsic rewards are nearly absent, but this imbalance can limit policy quality when semantics stall.
+\begin{figure}[t]
+    \centering
+\begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figs/final/big_run_03_episode_rewards.png}
+        \caption{\small Episode returns (big\_run\_03).}
+    \end{subfigure}
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figs/final/big_run_03_r_env_smoothed.png}
+        \caption{\small Smoothed $r_{\text{env}}$.}
+    \end{subfigure}\\[6pt]
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figs/final/big_run_03_r_rnd_smoothed.png}
+        \caption{\small Smoothed $r_{\text{rnd}}$.}
+    \end{subfigure}
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figs/final/big_run_03_r_novel_smoothed.png}
+        \caption{\small Smoothed $r_{\text{novel}}$.}
+    \end{subfigure}\\[6pt]
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figs/final/big_run_03_r_bayes_smoothed.png}
+        \caption{\small Smoothed $r_{\text{bayes}}$.}
+    \end{subfigure}
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{figs/final/big_run_03_r_total_smoothed.png}
+        \caption{\small Smoothed total reward.}
+    \end{subfigure}
+    \caption{\small Reward decomposition for big\_run\_03. Intrinsic terms dominate because extrinsic signals are sparse and episodes are long.}
+    \label{fig:rewards}
+\smallskip
+\noindent\textit{Interpretation:} Rewards remain intrinsic-heavy, with minor extrinsic spikes that arrive late, showing the agent is driven primarily by epistemic/novelty signals. The slow drift and oscillations reflect partial observability and long dwell; total reward stabilization mirrors RND predictor learning rather than true task progress.
+\end{figure}
+
+\subsection{Map Visitation}
+map\_visits and coverage proxies show big\_run\_03 covers three identifiable maps (plus unknown), slim only the spawn map. Figure~\ref{fig:map_visits} illustrates visitation counts and dwell for big\_run\_03; Table~\ref{tab:ablations} captures the relative coverage rankings across runs, with slim the lowest. Coverage remains limited because partial observability and curriculum bias keep the agent near early towns, and dwell oscillations reflect repeated loops rather than steady frontier pushing. Capacity gaps manifest as flat visitation tails for slim, underscoring how representation limits prevent posterior-guided signals from breaking exploration bottlenecks. \textbf{Takeaway:} curricula plus posterior signals help escape spawn but exploration still plateaus without stronger semantic guidance and more diverse restarts.
+\begin{figure}[t]
+\centering
+\begin{subfigure}{0.8\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{figs/final/big_run_03_map_visits.png}
+    \caption{\small Map visitation counts (big\_run\_03).}
+\end{subfigure}\\[8pt]
+\begin{subfigure}{0.8\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{figs/final/big_run_03_map_dwell.png}
+    \caption{\small Map dwell time over training (big\_run\_03).}
+\end{subfigure}
+\caption{\small Map visitation patterns for the baseline run. Coverage remains limited; dwell highlights prolonged stays on specific maps.}
+\label{fig:map_visits}
+\smallskip
+\noindent\textit{Interpretation:} The visitation histogram shows heavily skewed map usage with early-game dominance, while the dwell plot reveals prolonged local looping behavior. This reflects instability in long-horizon exploration, partial observability that traps the agent, and the need for stronger curriculum or posterior signals to escape bottlenecks. Moreover, a polished curriculum-selection criterion would benefit future training. 
+\end{figure}
+
+\subsection{Ablation Summary}
+Large runs outperform slim on coverage and milestone-pattern diversity; slim capacity correlates with unstable RND and poorer visitation (Table~\ref{tab:ablations}). Missing a no-RND ablation limits completeness. Comparative figures (e.g., slim\_posterior\_mean\_over\_time) mirror Figure~\ref{fig:rnd_curves} but remain noisier; coverage differences in Table~\ref{tab:ablations} align with these visual patterns, underscoring the significance of capacity for stabilizing posterior-guided exploration. \textbf{Takeaway:} capacity matters: reducing model size hurts posterior stability and spatial coverage.
+
+\subsection{Performance (SPS)}
+Training logs include steps/second over time; SPS declines as episodes lengthen (expected with long sequences and replay churn), reinforcing the need for shorter episodes in future runs, or my laptop to not overheat. SPS trends are visible in the console logs and can be extracted from events/positions timestamps for finer-grained plots. Throughput dips coincide with long dwell phases and replay churn, further limiting effective exploration per wall-clock. \textbf{Takeaway:} throughput degradation mirrors increasing sequence length, highlighting a practical bottleneck in scaling to deeper training horizons and a reason coverage stays limited despite large step counts.
+
+\section{Discussion \& Limitations}\label{sec:discussion}
+Hierarchical recurrent Q-networks address partial observability; RND, novelty, and Bayesian shaping supply intrinsic signals; map-biased savestates implement curriculum. Larger capacity stabilizes RND/posteriors and broadens coverage, while slim remains noisy—likely because the larger encoder better matches the RND target and disentangles WRAM + visual cues, reducing posterior variance. Intrinsic dominance aligns with sparse extrinsic rewards, and long episodes yield sparse episode stats. Failure modes include looping between early maps, overconfidence in early posterior\_mean, and slow adaptation when a savestate places the agent in states with little extrinsic signal. Savestates help escape spawn but can bias sampling toward mid-game regions seen so far, a lightweight echo of Go-Explore without full robustification. The model concept with hierarchical temporal and horizon processing with the GRU/LSTM/SSM would benefit a larger architecture that has endured more training and more curriculum learning. 
+
+Moreover, limitations include very long episodes leading to few completions and bottlenecks, missing progress.csv in big\_run\_03, no explicit no-RND run logs (it simply bottlenecked), limited coverage, and a single-seed/small ablation set due to compute. Posterior-guided modulation appears to dampen RND volatility when progress becomes more certain, but without a no-RND ablation log this remains suggestive. In other words, our no-RND ablation and our RND run with this model architecture would need significantly more training in order to prescribe better future steps for optimal modeling. Additionally, over-reliance on intrinsic signals risks posterior collapse when novelty vanishes, and stability at multi-hundred-k step horizons is not yet demonstrated. RQ1 (capacity and posterior stability/coverage) is supported by time-series stabilization and coverage gaps; RQ2 (intrinsic behavior) is supported by shrinking RND magnitudes and intrinsic-to-extrinsic ratios; RQ3 (compute limits) remains open without more seeds, a no-RND baseline, and additional stability checks. There exists a plethora of possible avenues to explore to better this experiment, but simply, compute power would enable a lot of the testing necessary for progressing with higher salience than other mentions. Ablations, in order to function ideally and optimally, would need further testing and currently the largest model has taken a significantly longer amount of time for less progress compared to prior literature, as expected. More bottlenecks can be avoided by more robust training regiments, yet the time constraint of a semester is not ideal for our plan. 
+
+\paragraph{Compute Constraints and Training Budget}
+Runs were limited to a single modest GPU. Long episodes (50k--75k steps), a 500k replay buffer, and large recurrent/SSM heads make each run expensive, constraining seeds and ablation breadth (no true no-RND yet) and limiting total horizons per configuration. These constraints yield noisy episode-level statistics and suggest some runs may be under-trained, so the narrow ablation suite and single seed limit statistical strength; conclusions should be interpreted as suggestive. A fuller Go-Explore archive or Dreamer-style latent world model could reduce sample complexity but would require substantially more compute. Additionally, the cluster storage yielded its own problems in this domain with thread errors and storage issues. 
+
+\paragraph{Threats to Validity}
+\emph{Internal validity:} missing progress.csv for big\_run\_03 and reliance on specific hyperparameters/logging may bias measurements. \emph{External validity:} results may not transfer to other games or non-pixel tasks without similar intrinsic shaping. \emph{Construct validity:} coverage and posterior variance are proxies for exploration quality and may not fully capture goal-directed progress. Design alternatives include a full Go-Explore archive or a Dreamer-style latent model; we opt for a simpler posterior-guided intrinsic approach with SSM hierarchy under modest compute, accepting reduced statistical power (single seed, narrow ablations).
+
+\section{Conclusion}\label{sec:conclusion}
+We analyze posterior-guided exploration on a challenging Pok\'emon Red benchmark using hierarchical CNN$\to$GRU/LSTM/SSM architectures with RND/novelty, Bayesian shaping, and curricula. Across \textasciitilde1.25M logged steps, intrinsic-driven exploration dominates; the large model stabilizes RND and improves coverage modestly (three identifiable maps vs. one), while slim capacity underperforms. Posterior variance and RND magnitudes decline as the predictor learns, but exploration still plateaus. Conceptually, posterior-guided intrinsic rewards plus SSM hierarchy offer a plausible path for exploration in RPG-like games under modest budgets, and may transfer to longer-horizon open-world settings (e.g., Minecraft) or partially observed robotics tasks where learned world knowledge and intrinsic signals must coexist.
+
+This study suggests that carefully modulated curiosity, lightweight recurrence/SSMs, and simple curricula can stretch limited compute surprisingly far, though absolute progress remains modest compared to large multimodal agents. Future work includes explicit no-RND and reward-scaling sweeps, shorter episodes for denser evaluation, richer hierarchical/model-based exploration, and deeper milestone tracking; integrating world models or planning could further reduce sample complexity in similarly challenging domains. We also plan to tighten evaluation around parcel/posterior collapse, so the link between semantic progress and coverage is clearer.
+
+\section*{Reproducibility}
+Code and data: \url{https://github.com/jlbelmont/PMRL}. Training via \texttt{train\_big.py} / \texttt{train\_slim.py}; resume checkpoints in \texttt{runs/<run>/checkpoints}. Analysis: \texttt{python -m analysis.final\_analysis\_rnd}, \texttt{final\_analysis\_rewards}, \texttt{final\_map\_visitation}, \texttt{metrics} regenerate all figures/tables (outputs in \texttt{figs/final/} and \texttt{analysis/tables/}). Logs/checkpoints are on the order of hundreds of MB; videos are stored under \texttt{runs/videos}. Hardware: CPU/GPU optional for analysis; training benefits from GPU. Random seeds follow defaults; long runs (millions of steps) take many hours on a single GPU.
+
+\clearpage
+
+
+\begin{thebibliography}{99}
+\bibitem{burda2019rnd} Burda et al., ``Large-Scale Study of Curiosity-Driven Learning,'' 2019.
+\bibitem{mnih2015dqn} Mnih et al., ``Human-level control through deep reinforcement learning,'' 2015.
+\bibitem{hessel2018rainbow} Hessel et al., ``Rainbow: Combining Improvements in Deep Reinforcement Learning,'' 2018.
+\bibitem{suttonbarto} Sutton and Barto, \emph{Reinforcement Learning: An Introduction}, 2018.
+\bibitem{bellemare2016pc} Bellemare et al., ``Unifying Count-Based Exploration and Intrinsic Motivation,'' 2016.
+\bibitem{gu2021s4} Gu et al., ``Efficiently Modeling Long Sequences with Structured State Spaces,'' 2021.
+\bibitem{pathak2017curiosity} Pathak et al., ``Curiosity-driven Exploration by Self-supervised Prediction,'' 2017.
+\bibitem{bengio2009curriculum} Bengio et al., ``Curriculum Learning,'' ICML 2009.
+\bibitem{dao2023mamba} Dao et al., ``Mamba: Linear-Time Sequence Modeling with Selective State Spaces,'' 2023.
+\bibitem{kahneman2011thinking} Kahneman, \emph{Thinking, Fast and Slow}, 2011.
+\bibitem{rubinstein} Rubinstein, ``pokemonred\_puffer,'' \url{https://github.com/drubinstein/pokemonred_puffer}.
+\bibitem{pwhiddy} PWhiddy, ``PokemonRedExperiments,'' \url{https://github.com/PWhiddy/PokemonRedExperiments}.
+\bibitem{pmrl} Belmont, ``PMRL,'' \url{https://github.com/jlbelmont/PMRL}.
+\bibitem{goexplore} Ecoffet et al., ``Go-Explore: A New Approach for Hard-Exploration Problems,'' 2019.
+\bibitem{r2d2} Kapturowski et al., ``Recurrent Experience Replay in Distributed Reinforcement Learning,'' 2019.
+\bibitem{dreamer} Hafner et al., ``DreamerV2: Mastering Atari with Discrete Latent World Models,'' 2020.
+\bibitem{pokerl} Rubinstein, ``pokerl: Long-horizon Pokemon RL policies,'' \url{https://drubinstein.github.io/pokerl/}.
+\bibitem{gemini} Google DeepMind, ``Gemini-based agent for Pok\'emon Blue,'' technical blog, 2024, \url{https://deepmind.google/}.
+\bibitem{gpt} ChatGPT, *LaTeX help, etc. 
+\url{https://chatgpt.com/}.
+\end{thebibliography}
+
+\end{document}
